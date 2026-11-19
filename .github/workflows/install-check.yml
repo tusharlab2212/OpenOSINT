@@ -17,12 +17,15 @@ jobs:
   tests:
     name: Tests and lint (py${{ matrix.python }})
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     strategy:
       fail-fast: false
       matrix:
         python: ["3.10", "3.12"]
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python }}
@@ -44,8 +47,11 @@ jobs:
   build:
     name: Build wheel
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - uses: astral-sh/setup-uv@v5
       - run: uv build
       - name: No bytecode in wheel or sdist
@@ -59,12 +65,15 @@ jobs:
     name: uvx openosint web (${{ matrix.os }})
     needs: build
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 25
     strategy:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - uses: astral-sh/setup-uv@v5
       - uses: actions/download-artifact@v4
         with:
@@ -78,8 +87,11 @@ jobs:
     name: uvx with graph extra (ubuntu)
     needs: build
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - uses: astral-sh/setup-uv@v5
       - uses: actions/download-artifact@v4
         with:
@@ -96,8 +108,11 @@ jobs:
   graph-parity:
     name: Vendored FtM ids match followthemoney
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
@@ -115,8 +130,11 @@ jobs:
   lock:
     name: uv.lock is up to date
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - uses: astral-sh/setup-uv@v5
       # The Heroku demo deploys with `uv sync --locked`: a stale lock breaks it.
       - run: uv lock --check
@@ -124,8 +142,11 @@ jobs:
   docker:
     name: docker compose up (fresh checkout, no .env)
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - name: Confirm there is no .env
         run: test ! -e .env
       - name: Wait for /api/health

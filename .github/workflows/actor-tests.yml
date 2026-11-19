@@ -7,20 +7,9 @@ name: Actor tests
 # openosint is installed from this checkout, not PyPI, so Actor tests exercise the
 # code in the PR.
 
+# Manual only in this fork: the Apify Actors are upstream marketplace packaging and
+# are not used here. Run from the Actions tab when actors/ is deliberately changed.
 on:
-  pull_request:
-    paths:
-      - "openosint/**"
-      - "actors/**"
-      - "pyproject.toml"
-      - ".github/workflows/actor-tests.yml"
-  push:
-    branches: [main]
-    paths:
-      - "openosint/**"
-      - "actors/**"
-      - "pyproject.toml"
-      - ".github/workflows/actor-tests.yml"
   workflow_dispatch:
 
 permissions:
@@ -30,10 +19,13 @@ jobs:
   discover:
     name: Discover Actors
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     outputs:
       actors: ${{ steps.find.outputs.actors }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - id: find
         run: |
           actors=$(find actors -mindepth 2 -maxdepth 2 -type d -name tests \
@@ -46,6 +38,7 @@ jobs:
     needs: discover
     if: needs.discover.outputs.actors != '[]'
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     strategy:
       fail-fast: false
       matrix:
@@ -55,6 +48,8 @@ jobs:
         working-directory: actors/${{ matrix.actor }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - uses: actions/setup-python@v5
         with:
           python-version: "3.13" # matches the apify/actor-python:3.13 base image
