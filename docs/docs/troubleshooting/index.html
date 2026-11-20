@@ -184,7 +184,8 @@
 <h2 id="the-mcp-server-will-not-start-in-a-desktop-app">The MCP server will not start in a desktop app</h2>
 <p>The app launched with a minimal <code>PATH</code> and cannot find <code>uvx</code>. Use the absolute path from <code>which uvx</code> (macOS, Linux) or <code>where uvx</code> (Windows) as the <code>command</code>. See <a href="/docs/mcp/">MCP server</a>.</p>
 <h2 id="a-env-file-is-ignored">A <code>.env</code> file is ignored</h2>
-<p><code>.env</code> is searched upward from the directory you run <code>openosint</code> from. The MCP server has an unrelated working directory, so set <code>OPENOSINT_ENV_FILE=/absolute/path/to/.env</code> in the client's <code>env</code> block.</p>
+<p>OpenOSINT does not read a <code>.env</code> from the directory you run it from or any parent directory; startup prints <code>[!] Not loading &lt;path&gt;</code> when it finds one there. Set <code>OPENOSINT_ENV_FILE=/absolute/path/to/.env</code>, or run <code>openosint config import</code> in that directory to copy its keys into <code>config.env</code>. For the MCP server, put <code>OPENOSINT_ENV_FILE</code> (or the keys themselves) in the client's <code>env</code> block.</p>
+<p>If the file loads but one variable is missing, look for <code>[!] Ignored in &lt;file&gt;: …</code> at startup: that variable can only be set as a real environment variable or command-line flag. See <a href="/docs/configuration/#what-a-file-may-not-set">What a file may not set</a>.</p>
 <h2 id="limitations">Limitations</h2>
 <ul>
 <li><strong>Authorized use only.</strong> OpenOSINT queries public and semi-public sources. It does not bypass authentication, exploit systems, or access anything you are not already entitled to see. You are responsible for the law and for the terms of service of every source you query. See the <a href="https://github.com/OpenOSINT/OpenOSINT/blob/main/DISCLAIMER.md">disclaimer</a>.</li>

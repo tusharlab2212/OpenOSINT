@@ -65,7 +65,9 @@ The app launched with a minimal `PATH` and cannot find `uvx`. Use the absolute p
 
 ## A `.env` file is ignored
 
-`.env` is searched upward from the directory you run `openosint` from. The MCP server has an unrelated working directory, so set `OPENOSINT_ENV_FILE=/absolute/path/to/.env` in the client's `env` block.
+OpenOSINT does not read a `.env` from the directory you run it from or any parent directory; startup prints `[!] Not loading <path>` when it finds one there. Set `OPENOSINT_ENV_FILE=/absolute/path/to/.env`, or run `openosint config import` in that directory to copy its keys into `config.env`. For the MCP server, put `OPENOSINT_ENV_FILE` (or the keys themselves) in the client's `env` block.
+
+If the file loads but one variable is missing, look for `[!] Ignored in <file>: …` at startup: that variable can only be set as a real environment variable or command-line flag. See [What a file may not set](/docs/configuration/#what-a-file-may-not-set).
 
 ## Limitations
 

@@ -154,12 +154,24 @@
 <h2 id="where-settings-come-from">Where settings come from</h2>
 <p>Highest priority first. The first source to set a variable wins.</p>
 <ol>
-<li>Real environment variables.</li>
+<li>Real environment variables. This includes the <code>env</code> block of an MCP client and the variables Docker Compose passes in. Command-line flags such as <code>--allow-active</code> and <code>--proxy</code> act at this level too.</li>
 <li><code>config.env</code> in the data directory: <code>~/.openosint/config.env</code>, or <code>$OPENOSINT_HOME/config.env</code>. The web UI saves keys here with user-only permissions where the OS supports it.</li>
-<li>A <code>.env</code> file, found by searching upward from the directory you run <code>openosint</code> from, or the file named by <code>OPENOSINT_ENV_FILE</code>.</li>
+<li>One <code>.env</code> file: the file named by <code>OPENOSINT_ENV_FILE</code>, otherwise the <code>.env</code> next to the <code>openosint/</code> package folder. That second file only exists when you run OpenOSINT from a source checkout (a git clone); a <code>pip</code> or <code>uvx</code> install has none.</li>
 </ol>
-<p>OpenOSINT reads a <code>.env</code> in place and never copies it into <code>config.env</code> on its own. To copy settings on purpose, run <code>openosint config import</code> (optionally <code>--from PATH</code> and <code>--only KEY,KEY</code>). It lists the setting names, asks for confirmation (<code>--yes</code> when there is no terminal), never overwrites a value already in <code>config.env</code>, and leaves your <code>.env</code> untouched. It never prints values.</p>
+<p>OpenOSINT does not read a <code>.env</code> from the directory you run it from, or from any parent directory. Such a file could come from a cloned repository, an unpacked archive or a shared folder, and would otherwise set your API keys, base URLs, proxies or active mode. When one is there, startup prints a single line, <code>[!] Not loading &lt;path&gt;</code>, saying how to use it on purpose. See <a href="#using-a-env-file">Using a <code>.env</code> file</a>.</p>
+<p>OpenOSINT reads a <code>.env</code> in place and never copies it into <code>config.env</code> on its own. To copy settings on purpose, run <code>openosint config import</code> (optionally <code>--from PATH</code> and <code>--only KEY,KEY</code>). It copies the API keys and provider settings listed in the table below, lists their names, asks for confirmation (<code>--yes</code> when there is no terminal), never overwrites a value already in <code>config.env</code>, and leaves your <code>.env</code> untouched. It never prints values. Without <code>--from</code> it uses the <code>.env</code> that was loaded, otherwise the nearest <code>.env</code> in the current directory or a parent, the one OpenOSINT no longer loads.</p>
 <p>If <code>config.env</code> and a <code>.env</code> hold different values for the same setting, <code>config.env</code> wins. Startup prints a warning that names both files and the settings, so a stale key in <code>config.env</code> cannot silently override the one you just changed in <code>.env</code>.</p>
+<h3 id="what-a-file-may-not-set">What a file may not set</h3>
+<p>Both <code>config.env</code> and the <code>.env</code> file are filtered. A file cannot set the variables below, in any letter case; startup lists any it skipped, by name only (<code>[!] Ignored in &lt;file&gt;: …</code>). Set them as real environment variables, or use the matching command-line flag.</p>
+<ul>
+<li>Process and loader: <code>PATH</code>, <code>PYTHONPATH</code>, <code>PYTHONHOME</code>, <code>PYTHONSTARTUP</code>, <code>PYTHONUSERBASE</code>, <code>BASH_ENV</code>, <code>ENV</code>, and any name starting with <code>LD_</code> or <code>DYLD_</code>.</li>
+<li>Proxies and TLS: <code>HTTP_PROXY</code>, <code>HTTPS_PROXY</code>, <code>ALL_PROXY</code>, <code>NO_PROXY</code>, <code>REQUESTS_CA_BUNDLE</code>, <code>SSL_CERT_FILE</code>, <code>SSL_CERT_DIR</code>, <code>CURL_CA_BUNDLE</code>, <code>SSLKEYLOGFILE</code>.</li>
+<li>Anthropic client: <code>ANTHROPIC_BASE_URL</code>, <code>ANTHROPIC_AUTH_TOKEN</code>, <code>ANTHROPIC_CUSTOM_HEADERS</code>.</li>
+<li>Web UI exposure: <code>OPENOSINT_TRUSTED_PROXY</code>, <code>TRUSTED_PROXY</code>, <code>OPENOSINT_ALLOW_CLIENT_BACKEND</code>, <code>OPENOSINT_ALLOWED_BASE_URLS</code>, <code>OPENOSINT_ALLOW_REMOTE</code>, <code>OPENOSINT_ALLOWED_HOSTS</code>, <code>OPENOSINT_ALLOWED_ORIGINS</code>, <code>DEMO_ALLOWED_ORIGINS</code>, <code>OPENOSINT_PUBLISHED_BIND</code>.</li>
+<li>Locations: <code>OPENOSINT_HOME</code>, <code>OPENOSINT_ENV_FILE</code>, <code>OPENOSINT_GRAPH_DB</code>.</li>
+</ul>
+<p><code>OPENOSINT_ALLOW_ACTIVE</code> is accepted from <code>config.env</code>, where the web UI's active-tools switch saves it, but not from a <code>.env</code> file. Use <code>--allow-active</code>, a real environment variable or the web UI switch.</p>
+<p><code>OPENOSINT_PROXY_URL</code> and <code>OPENAI_BASE_URL</code> can come from a file. When they do, startup names the file and shows only the host, never credentials, path or query.</p>
 <p>For the MCP server, set the variables in the client's <code>env</code> block; see <a href="/docs/mcp/">MCP server</a>.</p>
 <h2 id="api-keys-and-tokens">API keys and tokens</h2>
 <p>This table is generated from the key catalog in the code, so it matches the version you install.</p>
@@ -361,12 +373,25 @@
 </tr>
 </tbody>
 </table></div>
-<p>A real environment variable always wins over a saved value, and the web UI says so when that happens.</p>
-<h2 id="a-env-file">A <code>.env</code> file</h2>
-<p>Create a file named <code>.env</code> in the directory you work from:</p>
-<pre><code class="language-bash">ANTHROPIC_API_KEY=sk-ant-...
+<p>A real environment variable always wins over a saved value, and the web UI says so when that happens. Several of these (<code>OPENOSINT_ALLOW_ACTIVE</code>, <code>OPENOSINT_HOME</code>, <code>OPENOSINT_GRAPH_DB</code>, <code>OPENOSINT_ENV_FILE</code>, <code>OPENOSINT_ALLOWED_HOSTS</code>, <code>OPENOSINT_ALLOWED_ORIGINS</code>, <code>OPENOSINT_ALLOW_REMOTE</code>) are ignored in a <code>.env</code> file; see <a href="#what-a-file-may-not-set">What a file may not set</a>.</p>
+<h2 id="using-a-env-file">Using a <code>.env</code> file</h2>
+<p>Keep the file wherever you like and point OpenOSINT at it:</p>
+<pre><code class="language-bash"># /home/you/openosint.env
+ANTHROPIC_API_KEY=sk-ant-...
 SHODAN_API_KEY=your-key
 </code></pre>
+<pre><code class="language-bash">export OPENOSINT_ENV_FILE=&quot;$HOME/openosint.env&quot;
+</code></pre>
+<p>Use an absolute path: a path that does not exist is an error. Alternatively, copy the keys into <code>config.env</code> once with <code>openosint config import --from "$HOME/openosint.env"</code> and drop the file.</p>
+<p>In a source checkout, a <code>.env</code> at the repository root (next to <code>pyproject.toml</code>) is also read, with no variable needed.</p>
+<h3 id="upgrading-from-a-version-that-searched-the-working-directory">Upgrading from a version that searched the working directory</h3>
+<p>Earlier versions loaded the first <code>.env</code> found by searching upward from the directory you ran <code>openosint</code> from. If your keys are in such a file, startup now prints <code>[!] Not loading &lt;path&gt;</code>. Do one of:</p>
+<ul>
+<li>run <code>openosint config import</code> in that directory: it offers that file, lists the keys and copies them to <code>config.env</code> after you confirm;</li>
+<li>set <code>OPENOSINT_ENV_FILE</code> to the file's absolute path;</li>
+<li>export the variables in your shell.</li>
+</ul>
+<p><code>config import</code> copies the API keys and provider settings from the table above. Other settings in the file, such as <code>ANTHROPIC_MODEL</code>, stay behind: keep the file and use <code>OPENOSINT_ENV_FILE</code>, or export them. A variable from <a href="#what-a-file-may-not-set">What a file may not set</a>, such as <code>HTTPS_PROXY</code> or <code>OPENOSINT_ALLOW_ACTIVE</code>, has to move to your shell or a command-line flag.</p>
       <nav class="pager" aria-label="Previous and next page"><a class="prev" href="/docs/web-ui/" rel="prev"><small>Previous</small>Web UI</a><a class="next" href="/docs/bright-data/" rel="next"><small>Next</small>Bright Data</a>
       </nav>
       <p class="edit"><a href="https://github.com/OpenOSINT/OpenOSINT/edit/main/site/content/docs/configuration.md" rel="noopener">Edit this page on GitHub</a></p>

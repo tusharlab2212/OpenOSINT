@@ -9,6 +9,17 @@ OpenOSINT adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Changed
+
+- **Breaking:** a `.env` in the directory you run `openosint` from, or any parent directory, is no longer loaded. The CLI and web server used to load the first one found by searching upward, and the MCP server fell back to the same search. A cloned repository, unpacked archive or shared folder could therefore set API keys, base URLs, proxies, `PATH` or active mode for the process. Every entry point now reads `OPENOSINT_ENV_FILE` if set, otherwise the `.env` at the root of a source checkout, otherwise no `.env`. A working-directory `.env` is only detected, never read, and startup prints `[!] Not loading <path>` with how to use it on purpose. The missing-key message says the same.
+- `openosint config import` without `--from` now falls back to that working-directory `.env`, so `openosint config import` in the old directory is the migration path. It still lists names only, asks before copying, and copies only API keys and provider settings.
+
+### Security
+
+- `config.env` and `.env` files can no longer set variables that change how the process or its children run: `PATH`, `PYTHONPATH`, `PYTHONHOME`, `PYTHONSTARTUP`, `PYTHONUSERBASE`, `BASH_ENV`, `ENV`, `LD_*`, `DYLD_*`; the proxy and CA-bundle variables (`HTTP_PROXY`, `HTTPS_PROXY`, `ALL_PROXY`, `NO_PROXY`, `REQUESTS_CA_BUNDLE`, `SSL_CERT_FILE`, `SSL_CERT_DIR`, `CURL_CA_BUNDLE`, `SSLKEYLOGFILE`); `ANTHROPIC_BASE_URL`, `ANTHROPIC_AUTH_TOKEN` and `ANTHROPIC_CUSTOM_HEADERS` (read implicitly by the Anthropic SDK); the web UI exposure switches (`OPENOSINT_TRUSTED_PROXY`, `TRUSTED_PROXY`, `OPENOSINT_ALLOW_CLIENT_BACKEND`, `OPENOSINT_ALLOWED_BASE_URLS`, `OPENOSINT_ALLOW_REMOTE`, `OPENOSINT_ALLOWED_HOSTS`, `OPENOSINT_ALLOWED_ORIGINS`, `DEMO_ALLOWED_ORIGINS`, `OPENOSINT_PUBLISHED_BIND`); and `OPENOSINT_HOME`, `OPENOSINT_ENV_FILE`, `OPENOSINT_GRAPH_DB`. Names are matched in any letter case. Skipped names are listed on stderr, never their values. Real environment variables and command-line flags are not filtered.
+- `OPENOSINT_ALLOW_ACTIVE` is accepted from `config.env`, where the web UI's active-tools switch saves it, but not from a `.env` file. In Docker, the `.env` next to `docker-compose.yml` is still passed in as real environment variables; a `.env` inside the data volume (`/data/.env`) is filtered like any other file.
+- When `OPENOSINT_PROXY_URL` or `OPENAI_BASE_URL` is set from a file, startup names the file and shows only the host.
+
 ## [2.38.2] — 2026-11-15
 
 ### Changed

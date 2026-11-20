@@ -181,9 +181,10 @@ claude mcp list
 <p>Any client that can launch a stdio MCP server takes the same command and arguments. For Cursor, put the JSON above in <code>~/.cursor/mcp.json</code> (all projects) or <code>.cursor/mcp.json</code> (one project).</p>
 <p>Desktop apps often start with a minimal <code>PATH</code> that does not include <code>uvx</code>. If the server fails to start, replace <code>"uvx"</code> with the absolute path printed by <code>which uvx</code> (macOS, Linux) or <code>where uvx</code> (Windows).</p>
 <h2 id="api-keys">API keys</h2>
-<p>Put keys in the client's <code>env</code> block, as above. The server is started by the client with an unrelated working directory, so a <code>.env</code> file is not picked up reliably. To use one anyway, point to it:</p>
+<p>Put keys in the client's <code>env</code> block, as above. OpenOSINT does not read a <code>.env</code> from the working directory the client starts it in. To use a file, point to it:</p>
 <pre><code class="language-json">&quot;env&quot;: { &quot;OPENOSINT_ENV_FILE&quot;: &quot;/absolute/path/to/.env&quot; }
 </code></pre>
+<p>Some variables are ignored in a file, <code>OPENOSINT_ALLOW_ACTIVE</code> among them; put those in the <code>env</code> block itself. See <a href="/docs/configuration/#what-a-file-may-not-set">What a file may not set</a>.</p>
 <p>The <a href="/docs/configuration/">configuration page</a> lists every key and which tools need it.</p>
 <h2 id="passive-tools-only-by-default">Passive tools only, by default</h2>
 <p><code>tools/list</code> returns only the passive tools, so the client's model never sees the noisy ones. Each tool description carries its noise label. To also expose the tools that touch the target or are noisy, do one of:</p>

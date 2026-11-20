@@ -67,6 +67,8 @@ docker compose up --build
 
 The container publishes `127.0.0.1:8080` only. A browser reaches the container over the Docker network, so it cannot save keys by default. Set the keys in your compose environment or `.env`, or set `OPENOSINT_SETUP_TOKEN` to a long random string and enter it in the UI's key panel.
 
+The `.env` next to `docker-compose.yml` is passed in by Compose (`env_file:`) as real environment variables, so every variable in it applies, `OPENOSINT_ALLOW_ACTIVE` included. A `.env` placed in the data volume (`/data/.env`) is different: the container reads it as a file, and the variables a file may not set, such as `OPENOSINT_ALLOW_ACTIVE` or the proxy variables, are ignored there. See [What a file may not set](/docs/configuration/#what-a-file-may-not-set).
+
 ## Files it writes
 
 The graph database and session history live in the data directory. The web UI writes no reports; CLI and REPL reports go to `./reports/`.

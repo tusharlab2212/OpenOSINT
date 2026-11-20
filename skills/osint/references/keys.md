@@ -1,6 +1,6 @@
 # API keys
 
-The default flow needs none. When a keyed tool would add something, tell the user which variable to set (shell environment, `.env`, or the MCP client's `env` block). Never ask them to paste a key into the chat.
+The default flow needs none. When a keyed tool would add something, tell the user which variable to set (shell environment, `~/.openosint/config.env` via the web UI or `openosint config import`, a `.env` named by `OPENOSINT_ENV_FILE`, or the MCP client's `env` block; a `.env` in the working directory is not read). Never ask them to paste a key into the chat.
 
 | Tool | Variable | Adds |
 |---|---|---|

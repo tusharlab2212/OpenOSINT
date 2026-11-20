@@ -57,11 +57,13 @@ Desktop apps often start with a minimal `PATH` that does not include `uvx`. If t
 
 ## API keys
 
-Put keys in the client's `env` block, as above. The server is started by the client with an unrelated working directory, so a `.env` file is not picked up reliably. To use one anyway, point to it:
+Put keys in the client's `env` block, as above. OpenOSINT does not read a `.env` from the working directory the client starts it in. To use a file, point to it:
 
 ```json
 "env": { "OPENOSINT_ENV_FILE": "/absolute/path/to/.env" }
 ```
+
+Some variables are ignored in a file, `OPENOSINT_ALLOW_ACTIVE` among them; put those in the `env` block itself. See [What a file may not set](/docs/configuration/#what-a-file-may-not-set).
 
 The [configuration page](/docs/configuration/) lists every key and which tools need it.
 

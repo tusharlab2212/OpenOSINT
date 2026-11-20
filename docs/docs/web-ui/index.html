@@ -225,6 +225,7 @@
 <pre><code class="language-bash">docker compose up --build
 </code></pre>
 <p>The container publishes <code>127.0.0.1:8080</code> only. A browser reaches the container over the Docker network, so it cannot save keys by default. Set the keys in your compose environment or <code>.env</code>, or set <code>OPENOSINT_SETUP_TOKEN</code> to a long random string and enter it in the UI's key panel.</p>
+<p>The <code>.env</code> next to <code>docker-compose.yml</code> is passed in by Compose (<code>env_file:</code>) as real environment variables, so every variable in it applies, <code>OPENOSINT_ALLOW_ACTIVE</code> included. A <code>.env</code> placed in the data volume (<code>/data/.env</code>) is different: the container reads it as a file, and the variables a file may not set, such as <code>OPENOSINT_ALLOW_ACTIVE</code> or the proxy variables, are ignored there. See <a href="/docs/configuration/#what-a-file-may-not-set">What a file may not set</a>.</p>
 <h2 id="files-it-writes">Files it writes</h2>
 <p>The graph database and session history live in the data directory. The web UI writes no reports; CLI and REPL reports go to <code>./reports/</code>.</p>
       <nav class="pager" aria-label="Previous and next page"><a class="prev" href="/docs/mcp/" rel="prev"><small>Previous</small>MCP server</a><a class="next" href="/docs/configuration/" rel="next"><small>Next</small>Configuration</a>
