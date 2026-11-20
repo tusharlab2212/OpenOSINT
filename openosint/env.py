@@ -38,6 +38,17 @@ says how to use it on purpose (`OPENOSINT_ENV_FILE`, or
 changes anything: with the directory search gone there is only one
 non-explicit location.
 
+Files are filtered; the real environment and command-line flags never are. A
+file (config.env or a legacy .env) can never set the names in
+`_DENIED_FROM_FILES` or with a prefix in `_DENIED_PREFIXES_FROM_FILES` —
+process/loader control (PATH, PYTHONPATH, LD_*…), traffic interception (proxy
+and CA-bundle variables), Anthropic client redirection, network-exposure
+switches and storage locations — matched case-insensitively. OPENOSINT_ALLOW_ACTIVE
+may come from config.env (the web UI's active-mode switch saves it there) but
+never from a legacy .env. Skipped names (never values) are listed on stderr. When
+OPENOSINT_PROXY_URL or OPENAI_BASE_URL is set from a file, stderr says so,
+showing only the host.
+
 `[*] Loaded .env: <path>` is always printed to stderr, never stdout, in
 every entry point — stdout must stay clean for the MCP protocol and for
 `--json` CLI output.
@@ -48,8 +59,9 @@ from __future__ import annotations
 import os
 import sys
 from pathlib import Path
+from urllib.parse import urlsplit
 
-from dotenv import dotenv_values, find_dotenv, load_dotenv
+from dotenv import dotenv_values, find_dotenv
 
 from openosint.config_store import (
     config_path,
@@ -83,11 +95,100 @@ def mark_saved(name: str) -> None:
     _origins[name] = "config"
 
 
+# Names a file (config.env or a legacy .env) may never set, compared upper-cased.
+# Real environment variables and command-line flags are never filtered.
+_DENIED_FROM_FILES: frozenset[str] = frozenset(
+    {
+        # Process and loader control: which binaries run, what Python imports.
+        "PATH",
+        "PYTHONPATH",
+        "PYTHONHOME",
+        "PYTHONSTARTUP",
+        "PYTHONUSERBASE",
+        "BASH_ENV",
+        "ENV",
+        # Traffic interception: proxies, trusted CAs, TLS key logging.
+        "HTTP_PROXY",
+        "HTTPS_PROXY",
+        "ALL_PROXY",
+        "NO_PROXY",
+        "REQUESTS_CA_BUNDLE",
+        "SSL_CERT_FILE",
+        "SSL_CERT_DIR",
+        "CURL_CA_BUNDLE",
+        "SSLKEYLOGFILE",
+        # Read implicitly by the Anthropic SDK: redirect the API or add headers to it.
+        "ANTHROPIC_BASE_URL",
+        "ANTHROPIC_AUTH_TOKEN",
+        "ANTHROPIC_CUSTOM_HEADERS",
+        # Network-exposure switches of the web server.
+        "OPENOSINT_TRUSTED_PROXY",
+        "TRUSTED_PROXY",
+        "OPENOSINT_ALLOW_CLIENT_BACKEND",
+        "OPENOSINT_ALLOWED_BASE_URLS",
+        "OPENOSINT_ALLOW_REMOTE",
+        "OPENOSINT_ALLOWED_HOSTS",
+        "OPENOSINT_ALLOWED_ORIGINS",
+        "DEMO_ALLOWED_ORIGINS",
+        "OPENOSINT_PUBLISHED_BIND",
+        # Storage locations: where history, the graph and further config live.
+        "OPENOSINT_HOME",
+        "OPENOSINT_ENV_FILE",
+        "OPENOSINT_GRAPH_DB",
+    }
+)
+_DENIED_PREFIXES_FROM_FILES: tuple[str, ...] = ("LD_", "DYLD_")
+# Allowed from config.env only (the web UI's active-mode switch writes it there).
+_CONFIG_ONLY: frozenset[str] = frozenset({"OPENOSINT_ALLOW_ACTIVE"})
+# Allowed from files, but announced on stderr with the host only.
+_HOST_NOTICE_NAMES: frozenset[str] = frozenset({"OPENOSINT_PROXY_URL", "OPENAI_BASE_URL"})
+
+
+def _denied_from_file(name: str, origin: str) -> bool:
+    """True if a file of this *origin* ("config" or "legacy") may not set *name*."""
+    upper = name.upper()
+    if upper in _DENIED_FROM_FILES or upper.startswith(_DENIED_PREFIXES_FROM_FILES):
+        return True
+    return upper in _CONFIG_ONLY and origin != "config"
+
+
+def _host_only(url: str) -> str:
+    """host[:port] of *url* for a notice — never the scheme, credentials or path."""
+    try:
+        parts = urlsplit(url.strip())
+        host, port = parts.hostname, parts.port
+    except ValueError:
+        return "unrecognised"
+    if not host:
+        return "unrecognised"
+    if ":" in host:
+        host = f"[{host}]"
+    return f"{host}:{port}" if port else host
+
+
 def _load_file(path: str | Path, origin: str) -> None:
-    before = set(os.environ)
-    load_dotenv(dotenv_path=path, override=False)
-    for name in set(os.environ) - before:
+    """Set the file's variables that are not already set, except denied names.
+
+    Same precedence as load_dotenv(override=False): a name already in the
+    environment (real variable, flag, or an earlier source) is left alone, silently.
+    """
+    skipped: list[str] = []
+    for name, value in dotenv_values(path).items():
+        if value is None or name in os.environ:
+            continue
+        if _denied_from_file(name, origin):
+            skipped.append(name)
+            continue
+        os.environ[name] = value
         _origins[name] = origin
+        if name.upper() in _HOST_NOTICE_NAMES:
+            print(f"[*] {name} set from {path} (host: {_host_only(value)})", file=sys.stderr)
+    if skipped:
+        print(
+            f"[!] Ignored in {path}: {', '.join(skipped)}. These can only be set as real "
+            "environment variables or command-line flags.",
+            file=sys.stderr,
+        )
 
 
 def _resolve_path(*, prefer_package_root: bool = False) -> str:
