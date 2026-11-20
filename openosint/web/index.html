@@ -1080,9 +1080,11 @@ document.addEventListener('alpine:init', () => {
     clearAllKeys() {
       this.byok = { provider: this.byok.provider, apiKey: '', baseUrl: '', model: '' };
       this.byokToolKeys = {};
+      this.settings.openaiApiKey = '';
       try {
         sessionStorage.removeItem('openosint_byok');
         sessionStorage.removeItem('openosint_tool_keys');
+        sessionStorage.removeItem('openosint_openai_key');
       } catch {}
     },
 
@@ -1105,16 +1107,33 @@ document.addEventListener('alpine:init', () => {
       }
     },
 
-    // settings persistence
+    // settings persistence — everything in localStorage except the OpenAI-compatible
+    // API key, which lives in sessionStorage only (cleared when the tab closes).
+    // A key an older version saved in localStorage is moved out once, never kept in both.
     loadSettings() {
       try {
         const s = localStorage.getItem('openosint_settings');
-        if (s) Object.assign(this.settings, JSON.parse(s));
+        const stored = s ? JSON.parse(s) : {};
+        if ('openaiApiKey' in stored) {
+          const legacyKey = stored.openaiApiKey || '';
+          delete stored.openaiApiKey;
+          localStorage.setItem('openosint_settings', JSON.stringify(stored));
+          if (legacyKey && !sessionStorage.getItem('openosint_openai_key')) {
+            sessionStorage.setItem('openosint_openai_key', legacyKey);
+          }
+        }
+        Object.assign(this.settings, stored);
+        this.settings.openaiApiKey = sessionStorage.getItem('openosint_openai_key') || '';
       } catch {}
     },
 
     saveLocalSettings() {
-      try { localStorage.setItem('openosint_settings', JSON.stringify(this.settings)); } catch {}
+      try {
+        const { openaiApiKey, ...rest } = this.settings;
+        localStorage.setItem('openosint_settings', JSON.stringify(rest));
+        if (openaiApiKey) sessionStorage.setItem('openosint_openai_key', openaiApiKey);
+        else sessionStorage.removeItem('openosint_openai_key');
+      } catch {}
     },
 
     // health / tools

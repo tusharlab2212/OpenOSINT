@@ -77,6 +77,27 @@ from openosint.tools.search_footprint import run_footprint_osint  # noqa: E402
 logging.basicConfig(level=logging.INFO, format="[MCP] %(levelname)s: %(message)s")
 app = Server("openosint")
 
+
+class _DropTargetLogs(logging.Filter):
+    """MCP hosts keep the server's stderr in log files on disk. These modules log
+    investigation targets (emails, usernames, domains, IPs, URLs) at INFO/WARNING for
+    local CLI debugging; on the MCP server's own log output only their ERROR records
+    (crashes) are kept. The tool result returned to the client still carries the outcome
+    and any error message."""
+
+    _TARGET_LOGGERS = ("openosint.tools", "openosint.multi_target", "openosint.pivot")
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        return record.levelno >= logging.ERROR or not record.name.startswith(self._TARGET_LOGGERS)
+
+
+def _keep_targets_out_of_logs() -> None:
+    """Install _DropTargetLogs on the server's handlers (started from main() only, so
+    importing this module changes no other logging)."""
+    for handler in logging.getLogger().handlers:
+        if not any(isinstance(f, _DropTargetLogs) for f in handler.filters):
+            handler.addFilter(_DropTargetLogs())
+
 _JSON_PROP = {
     "json_output": {"type": "boolean", "description": "Return result as structured JSON."}
 }
@@ -633,7 +654,8 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> CallToolResult:
 
 
 async def _call_tool(name: str, arguments: dict[str, Any]) -> CallToolResult:
-    logger.info("Tool: %s | args: %s", name, arguments)
+    # Argument names only: values are investigation targets and must not reach host logs.
+    logger.info("Tool: %s | arguments: %s", name, ", ".join(sorted(arguments)) or "none")
     if name in TOOL_POLICY and not is_tool_enabled(name):
         return CallToolResult(content=[TextContent(type="text", text=disabled_result(name))], isError=True)
     should_use_json = bool(arguments.get("json_output", False))
@@ -798,6 +820,7 @@ def main(argv: list[str] | None = None) -> None:
         os.environ[ENV_ALLOW_ACTIVE] = "1"
     if args.allow_active_agent:
         os.environ[ENV_ALLOW_ACTIVE_AGENT] = "1"
+    _keep_targets_out_of_logs()
     set_surface("mcp")
     asyncio.run(_serve())
 

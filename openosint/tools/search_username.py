@@ -14,7 +14,12 @@ import logging
 from openosint.proxy import get_sherlock_proxy_args
 from openosint.tool_policy import requires_active
 from openosint.tools.exceptions import OSINTError, ToolExecutionError
-from openosint.utils import attribution_line, run_subprocess, strip_promotions
+from openosint.utils import (
+    attribution_line,
+    run_subprocess,
+    strip_promotions,
+    validate_cli_target,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -34,6 +39,7 @@ _DEFAULT_SITE_REQUEST_TIMEOUT_SECONDS = 10
 
 async def _run_sherlock(username: str, timeout_seconds: int) -> str:
     """Execute sherlock against username and return raw stdout."""
+    username = validate_cli_target(username, "username")
     result = await run_subprocess(
         binary=_BINARY,
         args=[username, "--print-found", "--timeout", _PER_SITE_TIMEOUT, *get_sherlock_proxy_args()],
