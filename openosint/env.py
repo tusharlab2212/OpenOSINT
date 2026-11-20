@@ -131,6 +131,8 @@ _DENIED_FROM_FILES: frozenset[str] = frozenset(
         "OPENOSINT_ALLOWED_ORIGINS",
         "DEMO_ALLOWED_ORIGINS",
         "OPENOSINT_PUBLISHED_BIND",
+        # Lets an AI model run active tools: real environment or openosint-mcp flag only.
+        "OPENOSINT_ALLOW_ACTIVE_AGENT",
         # Storage locations: where history, the graph and further config live.
         "OPENOSINT_HOME",
         "OPENOSINT_ENV_FILE",

@@ -41,7 +41,7 @@ Open Settings and pick one:
 
 Settings can also save tool keys on this computer. They go to `config.env` in the data directory (`~/.openosint/`, or `$OPENOSINT_HOME`), never into the installed package. Values are not logged or sent back to the browser. See [Configuration](/docs/configuration/).
 
-Active tools are off by default. On a local install, Settings has an "Enable active tools" switch; a public or demo instance can never enable them. See [Safety](/docs/safety/).
+Active tools are off by default. On a local install, Settings has an "Enable active tools" switch; a public or demo instance can never enable them. Every tool the web UI runs is chosen by the chat model, so the switch alone is not enough: the server also needs `OPENOSINT_ALLOW_ACTIVE_AGENT=1` in its environment, which has no switch in Settings. Without it the chat gets `blocked_for_model` for an active tool. See [Safety](/docs/safety/#tools-chosen-by-an-ai-model).
 
 ## Reaching it by another name
 

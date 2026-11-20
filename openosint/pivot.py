@@ -30,7 +30,7 @@ from openosint.correlation import (
 )
 from openosint.extractors import EXTRACTOR_REGISTRY
 from openosint.regexes import detect_entity_kind
-from openosint.tool_policy import current_budget, is_tool_enabled
+from openosint.tool_policy import current_budget, is_tool_enabled, model_selected
 
 logger = logging.getLogger(__name__)
 
@@ -167,6 +167,30 @@ async def _run_tool_safe(
 
 
 async def investigate_graph(
+    seed: str,
+    *,
+    max_depth: int = 2,
+    max_entities: int = 40,
+    max_tool_calls: int = 60,
+    timeout_seconds: int = 30,
+) -> EntityGraph:
+    """Auto-pivot, always as an automated (model-selected) choice of tools and targets.
+
+    The targets it pivots to come from earlier tool output, so active tools need
+    OPENOSINT_ALLOW_ACTIVE_AGENT here too, however the pivot was started. Arguments and
+    result are those of ``_investigate_graph``.
+    """
+    with model_selected():
+        return await _investigate_graph(
+            seed,
+            max_depth=max_depth,
+            max_entities=max_entities,
+            max_tool_calls=max_tool_calls,
+            timeout_seconds=timeout_seconds,
+        )
+
+
+async def _investigate_graph(
     seed: str,
     *,
     max_depth: int = 2,

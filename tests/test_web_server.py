@@ -361,6 +361,12 @@ class TestStreamOllamaToolCalls:
 
 
 class TestRunToolInputValidation:
+    @pytest.fixture(autouse=True)
+    def _model_may_run_active_tools(self, monkeypatch):
+        # _run_tool runs the chat model's calls; with the model opt-in these tests reach
+        # input validation for search_email (default denial: tests/test_agent_safety.py).
+        monkeypatch.setenv("OPENOSINT_ALLOW_ACTIVE_AGENT", "1")
+
     async def test_empty_string_returns_error_not_exception(self):
         from openosint.web_server import _run_tool
 

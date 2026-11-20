@@ -27,6 +27,7 @@ APPROVED_DENIED = {
     "OPENOSINT_TRUSTED_PROXY", "TRUSTED_PROXY", "OPENOSINT_ALLOW_CLIENT_BACKEND",
     "OPENOSINT_ALLOWED_BASE_URLS", "OPENOSINT_ALLOW_REMOTE", "OPENOSINT_ALLOWED_HOSTS",
     "OPENOSINT_ALLOWED_ORIGINS", "DEMO_ALLOWED_ORIGINS", "OPENOSINT_PUBLISHED_BIND",
+    "OPENOSINT_ALLOW_ACTIVE_AGENT",
     "OPENOSINT_HOME", "OPENOSINT_ENV_FILE", "OPENOSINT_GRAPH_DB",
 }  # fmt: skip
 
@@ -179,6 +180,55 @@ class TestConfigEnv:
 
         assert "OPENOSINT_ALLOW_ACTIVE" not in os.environ
         assert "OPENOSINT_ALLOW_ACTIVE" in capsys.readouterr().err
+
+
+class TestAllowActiveAgentComesOnlyFromTheRealEnvironment:
+    """OPENOSINT_ALLOW_ACTIVE_AGENT lets an AI model run active tools. Unlike
+    OPENOSINT_ALLOW_ACTIVE (which the web UI switch saves to config.env) nothing writes
+    it to a file, so no file may set it: only the real environment or the
+    openosint-mcp --allow-active-agent flag (which sets the real environment)."""
+
+    def test_ignored_from_a_legacy_env_file_and_named(self, tmp_path, capsys):
+        legacy = _legacy(tmp_path, "OPENOSINT_ALLOW_ACTIVE_AGENT=1\nMARKER_OK=loaded\n")
+
+        env_module.load_env()
+
+        assert "OPENOSINT_ALLOW_ACTIVE_AGENT" not in os.environ
+        assert os.environ["MARKER_OK"] == "loaded"
+        err = capsys.readouterr().err
+        assert f"Ignored in {legacy}" in err and "OPENOSINT_ALLOW_ACTIVE_AGENT" in err
+
+    def test_ignored_from_config_env_too(self, isolated):
+        isolated.write_text("OPENOSINT_ALLOW_ACTIVE_AGENT=1\n")
+
+        env_module.load_env()
+
+        assert "OPENOSINT_ALLOW_ACTIVE_AGENT" not in os.environ
+
+    def test_a_file_cannot_give_the_model_active_tools(self, tmp_path, isolated):
+        """The web UI switch puts OPENOSINT_ALLOW_ACTIVE in config.env; a .env adding the
+        agent opt-in must still leave model-chosen active tools refused."""
+        from openosint import tool_policy as tp
+
+        isolated.write_text("OPENOSINT_ALLOW_ACTIVE=1\n")
+        _legacy(tmp_path, "OPENOSINT_ALLOW_ACTIVE_AGENT=1\nopenosint_allow_active_agent=1\n")
+
+        env_module.load_env()
+
+        assert os.environ["OPENOSINT_ALLOW_ACTIVE"] == "1"  # the UI switch still works
+        assert tp.is_tool_enabled("search_email")  # direct use: unchanged
+        with tp.model_selected():
+            assert not tp.is_tool_enabled("search_email")
+            assert json.loads(tp.disabled_result("search_email"))["status"] == "blocked_for_model"
+
+    def test_real_environment_value_is_kept(self, tmp_path):
+        os.environ["OPENOSINT_ALLOW_ACTIVE_AGENT"] = "1"
+        _legacy(tmp_path, "OPENOSINT_ALLOW_ACTIVE_AGENT=0\n")
+
+        env_module.load_env()
+
+        assert os.environ["OPENOSINT_ALLOW_ACTIVE_AGENT"] == "1"
+        assert env_module.value_source("OPENOSINT_ALLOW_ACTIVE_AGENT") == "environment"
 
 
 class TestRealEnvironmentIsNeverFiltered:

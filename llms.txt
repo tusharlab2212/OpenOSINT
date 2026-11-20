@@ -17,10 +17,10 @@ OpenOSINT is a modular OSINT framework that exposes 21 intelligence-gathering to
 - Python 3.10+ required
 
 ## Claude Code MCP setup
-Requires [uv](https://docs.astral.sh/uv/getting-started/installation/). Passive tools only (20) by default; add `--allow-active` for all 25.
+Requires [uv](https://docs.astral.sh/uv/getting-started/installation/). Passive tools only (20) by default; add `--allow-active --allow-active-agent` for all 25.
 `claude mcp add openosint -- uvx --from openosint openosint-mcp`
 With a key: `claude mcp add openosint -e SHODAN_API_KEY=your-key -- uvx --from openosint openosint-mcp`
-Optional, enables active tools (noisy; see README "Passive by default"): append `--allow-active` or set OPENOSINT_ALLOW_ACTIVE=1
+Optional, enables active tools (noisy; see README "Passive by default"): append `--allow-active --allow-active-agent`, or set OPENOSINT_ALLOW_ACTIVE=1 and OPENOSINT_ALLOW_ACTIVE_AGENT=1. Both are required: every MCP call is chosen by the client's model.
 Claude Desktop / Cursor: `{"mcpServers": {"openosint": {"command": "uvx", "args": ["--from", "openosint", "openosint-mcp"], "env": {}}}}`
 
 ## Available MCP tools (20)

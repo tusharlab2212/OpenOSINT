@@ -69,12 +69,12 @@ The [configuration page](/docs/configuration/) lists every key and which tools n
 
 ## Passive tools only, by default
 
-`tools/list` returns only the passive tools, so the client's model never sees the noisy ones. Each tool description carries its noise label. To also expose the tools that touch the target or are noisy, do one of:
+`tools/list` returns only the passive tools, so the client's model never sees the noisy ones. Each tool description carries its noise label. Every MCP call is chosen by the client's model, so exposing the tools that touch the target or are noisy takes two separate opt-ins, both required:
 
-- append `--allow-active` after `openosint-mcp`;
-- set `OPENOSINT_ALLOW_ACTIVE=1` in the `env` block.
+- append `--allow-active --allow-active-agent` after `openosint-mcp`;
+- or set `OPENOSINT_ALLOW_ACTIVE=1` and `OPENOSINT_ALLOW_ACTIVE_AGENT=1` in the `env` block.
 
-Read the [noise table](/docs/safety/) before you do.
+With only the first, active tools stay hidden and a call to one returns `blocked_for_model`. Read the [noise table and the section on model-chosen tools](/docs/safety/) before you enable both.
 
 The server does not cap how many tools your client calls. Only `investigate_multi`, which runs several targets at once, shares one budget of %%MAX_CALLS_MULTI%% calls by default.
 

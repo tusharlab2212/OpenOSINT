@@ -440,9 +440,11 @@ async def test_mcp_call_of_hidden_tool_returns_structured_error():
     assert json.loads(result.content[0].text)["status"] == "disabled_in_passive_mode"
 
 
-async def test_mcp_lists_active_tools_with_noise_labels_when_opted_in(active):
+async def test_mcp_lists_active_tools_with_noise_labels_when_opted_in(active, monkeypatch):
     from openosint import mcp_server
 
+    # MCP calls are chosen by the client's model: both opt-ins are needed.
+    monkeypatch.setenv(tp.ENV_ALLOW_ACTIVE_AGENT, "1")
     tools = {t.name: t.description for t in await mcp_server.list_tools()}
     assert set(NON_PASSIVE) & set(tools) >= {"search_username", "search_email", "search_domain", "scrape_url"}
     assert "[noisy" in tools["search_username"]

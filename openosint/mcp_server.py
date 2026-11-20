@@ -43,7 +43,15 @@ from mcp.server.stdio import stdio_server  # noqa: E402
 from mcp.types import CallToolResult, TextContent, Tool  # noqa: E402
 
 from openosint.json_output import to_json  # noqa: E402
-from openosint.tool_policy import ENV_ALLOW_ACTIVE, TOOL_POLICY, describe, disabled_result, is_tool_enabled  # noqa: E402
+from openosint.tool_policy import (  # noqa: E402
+    ENV_ALLOW_ACTIVE,
+    ENV_ALLOW_ACTIVE_AGENT,
+    TOOL_POLICY,
+    describe,
+    disabled_result,
+    is_tool_enabled,
+    model_selected,
+)
 from openosint.tools.generate_dorks import run_dork_osint  # noqa: E402
 from openosint.tools.scrape_url import run_scrape_url_osint  # noqa: E402
 from openosint.tools.search_abuseipdb import run_abuseipdb_osint  # noqa: E402
@@ -83,13 +91,14 @@ def _with_json(schema: dict) -> dict:
 
 @app.list_tools()
 async def list_tools() -> list[Tool]:
-    """Only tools the current mode enables are listed, each with its noise label, so a
-    client LLM in passive mode cannot even see the non-passive ones."""
-    return [
-        tool.model_copy(update={"description": describe(tool.name, tool.description or "")})
-        for tool in _all_tools()
-        if is_tool_enabled(tool.name)
-    ]
+    """Only tools the client's model may run are listed, each with its noise label: no
+    non-passive tool unless both --allow-active and --allow-active-agent are on."""
+    with model_selected():
+        return [
+            tool.model_copy(update={"description": describe(tool.name, tool.description or "")})
+            for tool in _all_tools()
+            if is_tool_enabled(tool.name)
+        ]
 
 
 def _all_tools() -> list[Tool]:
@@ -617,6 +626,13 @@ _HANDLERS: dict[str, tuple] = {
 
 @app.call_tool()
 async def call_tool(name: str, arguments: dict[str, Any]) -> CallToolResult:
+    """Every MCP call is chosen by the client's model: authorise and run it as
+    model-selected, so active tools also need OPENOSINT_ALLOW_ACTIVE_AGENT."""
+    with model_selected():
+        return await _call_tool(name, arguments)
+
+
+async def _call_tool(name: str, arguments: dict[str, Any]) -> CallToolResult:
     logger.info("Tool: %s | args: %s", name, arguments)
     if name in TOOL_POLICY and not is_tool_enabled(name):
         return CallToolResult(content=[TextContent(type="text", text=disabled_result(name))], isError=True)
@@ -764,11 +780,24 @@ def main(argv: list[str] | None = None) -> None:
         help=(
             "Also expose tools that touch the target or are noisy (scrape_url, search_username, "
             "search_email, search_domain, search_phone, VirusTotal URL submission, DNS DKIM probes). "
-            "Off by default: the server lists passive tools only. Same as OPENOSINT_ALLOW_ACTIVE=1."
+            "Off by default: the server lists passive tools only. Same as OPENOSINT_ALLOW_ACTIVE=1. "
+            "Every MCP call is chosen by the client's model, so active tools also need "
+            "--allow-active-agent."
         ),
     )
-    if parser.parse_args(argv).allow_active:
+    parser.add_argument(
+        "--allow-active-agent",
+        action="store_true",
+        help=(
+            "Second, separate opt-in that lets the client's model run active tools (with "
+            "--allow-active). Off by default. Same as OPENOSINT_ALLOW_ACTIVE_AGENT=1."
+        ),
+    )
+    args = parser.parse_args(argv)
+    if args.allow_active:
         os.environ[ENV_ALLOW_ACTIVE] = "1"
+    if args.allow_active_agent:
+        os.environ[ENV_ALLOW_ACTIVE_AGENT] = "1"
     set_surface("mcp")
     asyncio.run(_serve())
 

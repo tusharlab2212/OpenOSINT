@@ -267,7 +267,10 @@ class TestOpenAICompatibleAgentToolUseLoop:
         tool_msgs = [m for m in second_call_messages if m["role"] == "tool"]
         assert len(tool_msgs) == 1
         assert tool_msgs[0]["tool_call_id"] == "my-id-42"
-        assert tool_msgs[0]["content"] == "r"
+        # The model gets the result wrapped as untrusted data (openosint.tool_output).
+        content = tool_msgs[0]["content"]
+        assert content.startswith('<tool_output tool="generate_dorks" id="')
+        assert "\nr\n</tool_output id=" in content
 
     async def test_multiple_tool_calls_in_one_turn_all_executed(self):
         """When the model returns two tool_calls in one response both must run."""

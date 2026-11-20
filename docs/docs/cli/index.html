@@ -367,8 +367,8 @@
 <td>List current sponsors and featured integrations</td>
 </tr>
 <tr>
-<td><code>openosint-mcp [--allow-active]</code></td>
-<td>The <a href="/docs/mcp/">MCP server</a> (a separate executable)</td>
+<td><code>openosint-mcp [--allow-active] [--allow-active-agent]</code></td>
+<td>The <a href="/docs/mcp/">MCP server</a> (a separate executable). Active tools need both flags</td>
 </tr>
 </tbody>
 </table></div>
@@ -383,7 +383,7 @@
 <tbody>
 <tr>
 <td><code>--allow-active</code></td>
-<td>Enable active tools (noisy, or they touch the target). Off by default; same as <code>OPENOSINT_ALLOW_ACTIVE=1</code></td>
+<td>Enable active tools (noisy, or they touch the target). Off by default; same as <code>OPENOSINT_ALLOW_ACTIVE=1</code>. Enough for direct subcommands; in the REPL and <code>multi</code>, where the AI model picks the tools, active tools also need <code>OPENOSINT_ALLOW_ACTIVE_AGENT=1</code></td>
 </tr>
 <tr>
 <td><code>--json</code></td>

@@ -85,7 +85,7 @@ Tools run as real Python code and every finding cites the call that produced it.
 
 ## Passive by default
 
-Agents and MCP clients are only offered tools that query third-party sources or compute locally. Anything that touches the target or sends many requests from your IP is off until you opt in (`--allow-active`) and is not listed in an MCP client's `tools/list`. Passive is not private: every service you query sees the query. Details: [Safety](https://openosint.tech/docs/safety/).
+Agents and MCP clients are only offered tools that query third-party sources or compute locally. Anything that touches the target or sends many requests from your IP is off until you opt in (`--allow-active`) and is not listed in an MCP client's `tools/list`. When an AI model picks the tool (REPL, web UI chat, MCP clients), a second opt-in is also required (`OPENOSINT_ALLOW_ACTIVE_AGENT=1`, or `openosint-mcp --allow-active-agent`). Passive is not private: every service you query sees the query. Details: [Safety](https://openosint.tech/docs/safety/).
 
 ## Use it from Claude Code or any MCP client
 

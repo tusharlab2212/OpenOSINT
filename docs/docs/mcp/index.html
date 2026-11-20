@@ -187,12 +187,12 @@ claude mcp list
 <p>Some variables are ignored in a file, <code>OPENOSINT_ALLOW_ACTIVE</code> among them; put those in the <code>env</code> block itself. See <a href="/docs/configuration/#what-a-file-may-not-set">What a file may not set</a>.</p>
 <p>The <a href="/docs/configuration/">configuration page</a> lists every key and which tools need it.</p>
 <h2 id="passive-tools-only-by-default">Passive tools only, by default</h2>
-<p><code>tools/list</code> returns only the passive tools, so the client's model never sees the noisy ones. Each tool description carries its noise label. To also expose the tools that touch the target or are noisy, do one of:</p>
+<p><code>tools/list</code> returns only the passive tools, so the client's model never sees the noisy ones. Each tool description carries its noise label. Every MCP call is chosen by the client's model, so exposing the tools that touch the target or are noisy takes two separate opt-ins, both required:</p>
 <ul>
-<li>append <code>--allow-active</code> after <code>openosint-mcp</code>;</li>
-<li>set <code>OPENOSINT_ALLOW_ACTIVE=1</code> in the <code>env</code> block.</li>
+<li>append <code>--allow-active --allow-active-agent</code> after <code>openosint-mcp</code>;</li>
+<li>or set <code>OPENOSINT_ALLOW_ACTIVE=1</code> and <code>OPENOSINT_ALLOW_ACTIVE_AGENT=1</code> in the <code>env</code> block.</li>
 </ul>
-<p>Read the <a href="/docs/safety/">noise table</a> before you do.</p>
+<p>With only the first, active tools stay hidden and a call to one returns <code>blocked_for_model</code>. Read the <a href="/docs/safety/">noise table and the section on model-chosen tools</a> before you enable both.</p>
 <p>The server does not cap how many tools your client calls. Only <code>investigate_multi</code>, which runs several targets at once, shares one budget of 30 calls by default.</p>
 <h2 id="pin-a-version">Pin a version</h2>
 <pre><code class="language-bash">uvx --from openosint==2.38.2 openosint-mcp

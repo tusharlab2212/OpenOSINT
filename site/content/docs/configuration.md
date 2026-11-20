@@ -30,6 +30,7 @@ Both `config.env` and the `.env` file are filtered. A file cannot set the variab
 - Proxies and TLS: `HTTP_PROXY`, `HTTPS_PROXY`, `ALL_PROXY`, `NO_PROXY`, `REQUESTS_CA_BUNDLE`, `SSL_CERT_FILE`, `SSL_CERT_DIR`, `CURL_CA_BUNDLE`, `SSLKEYLOGFILE`.
 - Anthropic client: `ANTHROPIC_BASE_URL`, `ANTHROPIC_AUTH_TOKEN`, `ANTHROPIC_CUSTOM_HEADERS`.
 - Web UI exposure: `OPENOSINT_TRUSTED_PROXY`, `TRUSTED_PROXY`, `OPENOSINT_ALLOW_CLIENT_BACKEND`, `OPENOSINT_ALLOWED_BASE_URLS`, `OPENOSINT_ALLOW_REMOTE`, `OPENOSINT_ALLOWED_HOSTS`, `OPENOSINT_ALLOWED_ORIGINS`, `DEMO_ALLOWED_ORIGINS`, `OPENOSINT_PUBLISHED_BIND`.
+- Model authorization: `OPENOSINT_ALLOW_ACTIVE_AGENT`. Nothing saves it to a file; set it in the real environment, or use `openosint-mcp --allow-active-agent`.
 - Locations: `OPENOSINT_HOME`, `OPENOSINT_ENV_FILE`, `OPENOSINT_GRAPH_DB`.
 
 `OPENOSINT_ALLOW_ACTIVE` is accepted from `config.env`, where the web UI's active-tools switch saves it, but not from a `.env` file. Use `--allow-active`, a real environment variable or the web UI switch.
@@ -54,7 +55,9 @@ These tools need no key: <!-- gen:keyless -->. Tools that are noisy or touch the
 
 | Variable | Default | Purpose |
 |---|---|---|
-| `OPENOSINT_ALLOW_ACTIVE` | off | `1` enables active tools. Same as `--allow-active`. |
+| `OPENOSINT_ALLOW_ACTIVE` | off | `1` enables active tools. Same as `--allow-active`. Enough for direct CLI subcommands; when an AI model picks the tool (REPL, `multi`, web UI chat, MCP) it also needs `OPENOSINT_ALLOW_ACTIVE_AGENT`. |
+| `OPENOSINT_ALLOW_ACTIVE_AGENT` | off | `1` lets a tool call chosen by an AI model run an active tool, on top of `OPENOSINT_ALLOW_ACTIVE`; without it such calls return `blocked_for_model`. `openosint-mcp --allow-active-agent` is the same. Real environment only: ignored in `config.env` and `.env` files. See [Safety](/docs/safety/#tools-chosen-by-an-ai-model). |
+| `OPENOSINT_MAX_TOOL_RESULT_CHARS` | 20000 (min 1000) | Characters of each tool result shown to the model; longer output is cut with an explicit note. You still see the full output. |
 | `OPENOSINT_MAX_TOOL_CALLS` | %%MAX_CALLS%% | Maximum calls per user request. |
 | `OPENOSINT_MAX_TOOL_CALLS_MULTI` | %%MAX_CALLS_MULTI%% | One shared cap for `investigate_multi` across all targets. |
 | `ANTHROPIC_MODEL` | `%%DEFAULT_MODEL%%` | Model requested from Anthropic. `OPENOSINT_MODEL` still works but is deprecated. |
@@ -70,7 +73,7 @@ These tools need no key: <!-- gen:keyless -->. Tools that are noisy or touch the
 | `OPENOSINT_GDELT_MAX_ARTICLES` | 30000 | Hard cap on stored news articles; oldest are dropped first. |
 | `OPENOSINT_GDELT_USE_PROXY` | off | Route GDELT downloads through the proxy. |
 
-A real environment variable always wins over a saved value, and the web UI says so when that happens. Several of these (`OPENOSINT_ALLOW_ACTIVE`, `OPENOSINT_HOME`, `OPENOSINT_GRAPH_DB`, `OPENOSINT_ENV_FILE`, `OPENOSINT_ALLOWED_HOSTS`, `OPENOSINT_ALLOWED_ORIGINS`, `OPENOSINT_ALLOW_REMOTE`) are ignored in a `.env` file; see [What a file may not set](#what-a-file-may-not-set).
+A real environment variable always wins over a saved value, and the web UI says so when that happens. Several of these (`OPENOSINT_ALLOW_ACTIVE`, `OPENOSINT_ALLOW_ACTIVE_AGENT`, `OPENOSINT_HOME`, `OPENOSINT_GRAPH_DB`, `OPENOSINT_ENV_FILE`, `OPENOSINT_ALLOWED_HOSTS`, `OPENOSINT_ALLOWED_ORIGINS`, `OPENOSINT_ALLOW_REMOTE`) are ignored in a `.env` file; see [What a file may not set](#what-a-file-may-not-set).
 
 ## Using a `.env` file
 

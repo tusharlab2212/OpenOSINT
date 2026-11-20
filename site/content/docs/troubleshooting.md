@@ -31,6 +31,10 @@ These tools stop at the first account-level failure instead of retrying every qu
 
 The tool is active (it touches the target or is noisy) and active tools are off. Pass `--allow-active`, set `OPENOSINT_ALLOW_ACTIVE=1`, or use the web UI switch, after reading [Safety](/docs/safety/). A public or demo instance cannot enable them.
 
+## `blocked_for_model`
+
+Active tools are on, but the call was chosen by an AI model (the REPL, `openosint multi`, the web UI chat or an MCP client), which needs a second opt-in: `OPENOSINT_ALLOW_ACTIVE_AGENT=1`, or `--allow-active-agent` for `openosint-mcp`. Nothing was run. To run the tool yourself instead, use the CLI subcommand with `--allow-active`. See [Tools chosen by an AI model](/docs/safety/#tools-chosen-by-an-ai-model).
+
 ## `Tool call limit reached (N calls for this request)`
 
 The per-request cap stopped the investigation. Send another message to continue, or raise `OPENOSINT_MAX_TOOL_CALLS`.

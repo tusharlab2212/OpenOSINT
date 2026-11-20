@@ -168,6 +168,7 @@
 <li>Proxies and TLS: <code>HTTP_PROXY</code>, <code>HTTPS_PROXY</code>, <code>ALL_PROXY</code>, <code>NO_PROXY</code>, <code>REQUESTS_CA_BUNDLE</code>, <code>SSL_CERT_FILE</code>, <code>SSL_CERT_DIR</code>, <code>CURL_CA_BUNDLE</code>, <code>SSLKEYLOGFILE</code>.</li>
 <li>Anthropic client: <code>ANTHROPIC_BASE_URL</code>, <code>ANTHROPIC_AUTH_TOKEN</code>, <code>ANTHROPIC_CUSTOM_HEADERS</code>.</li>
 <li>Web UI exposure: <code>OPENOSINT_TRUSTED_PROXY</code>, <code>TRUSTED_PROXY</code>, <code>OPENOSINT_ALLOW_CLIENT_BACKEND</code>, <code>OPENOSINT_ALLOWED_BASE_URLS</code>, <code>OPENOSINT_ALLOW_REMOTE</code>, <code>OPENOSINT_ALLOWED_HOSTS</code>, <code>OPENOSINT_ALLOWED_ORIGINS</code>, <code>DEMO_ALLOWED_ORIGINS</code>, <code>OPENOSINT_PUBLISHED_BIND</code>.</li>
+<li>Model authorization: <code>OPENOSINT_ALLOW_ACTIVE_AGENT</code>. Nothing saves it to a file; set it in the real environment, or use <code>openosint-mcp --allow-active-agent</code>.</li>
 <li>Locations: <code>OPENOSINT_HOME</code>, <code>OPENOSINT_ENV_FILE</code>, <code>OPENOSINT_GRAPH_DB</code>.</li>
 </ul>
 <p><code>OPENOSINT_ALLOW_ACTIVE</code> is accepted from <code>config.env</code>, where the web UI's active-tools switch saves it, but not from a <code>.env</code> file. Use <code>--allow-active</code>, a real environment variable or the web UI switch.</p>
@@ -299,7 +300,17 @@
 <tr>
 <td><code>OPENOSINT_ALLOW_ACTIVE</code></td>
 <td>off</td>
-<td><code>1</code> enables active tools. Same as <code>--allow-active</code>.</td>
+<td><code>1</code> enables active tools. Same as <code>--allow-active</code>. Enough for direct CLI subcommands; when an AI model picks the tool (REPL, <code>multi</code>, web UI chat, MCP) it also needs <code>OPENOSINT_ALLOW_ACTIVE_AGENT</code>.</td>
+</tr>
+<tr>
+<td><code>OPENOSINT_ALLOW_ACTIVE_AGENT</code></td>
+<td>off</td>
+<td><code>1</code> lets a tool call chosen by an AI model run an active tool, on top of <code>OPENOSINT_ALLOW_ACTIVE</code>; without it such calls return <code>blocked_for_model</code>. <code>openosint-mcp --allow-active-agent</code> is the same. Real environment only: ignored in <code>config.env</code> and <code>.env</code> files. See <a href="/docs/safety/#tools-chosen-by-an-ai-model">Safety</a>.</td>
+</tr>
+<tr>
+<td><code>OPENOSINT_MAX_TOOL_RESULT_CHARS</code></td>
+<td>20000 (min 1000)</td>
+<td>Characters of each tool result shown to the model; longer output is cut with an explicit note. You still see the full output.</td>
 </tr>
 <tr>
 <td><code>OPENOSINT_MAX_TOOL_CALLS</code></td>
@@ -373,7 +384,7 @@
 </tr>
 </tbody>
 </table></div>
-<p>A real environment variable always wins over a saved value, and the web UI says so when that happens. Several of these (<code>OPENOSINT_ALLOW_ACTIVE</code>, <code>OPENOSINT_HOME</code>, <code>OPENOSINT_GRAPH_DB</code>, <code>OPENOSINT_ENV_FILE</code>, <code>OPENOSINT_ALLOWED_HOSTS</code>, <code>OPENOSINT_ALLOWED_ORIGINS</code>, <code>OPENOSINT_ALLOW_REMOTE</code>) are ignored in a <code>.env</code> file; see <a href="#what-a-file-may-not-set">What a file may not set</a>.</p>
+<p>A real environment variable always wins over a saved value, and the web UI says so when that happens. Several of these (<code>OPENOSINT_ALLOW_ACTIVE</code>, <code>OPENOSINT_ALLOW_ACTIVE_AGENT</code>, <code>OPENOSINT_HOME</code>, <code>OPENOSINT_GRAPH_DB</code>, <code>OPENOSINT_ENV_FILE</code>, <code>OPENOSINT_ALLOWED_HOSTS</code>, <code>OPENOSINT_ALLOWED_ORIGINS</code>, <code>OPENOSINT_ALLOW_REMOTE</code>) are ignored in a <code>.env</code> file; see <a href="#what-a-file-may-not-set">What a file may not set</a>.</p>
 <h2 id="using-a-env-file">Using a <code>.env</code> file</h2>
 <p>Keep the file wherever you like and point OpenOSINT at it:</p>
 <pre><code class="language-bash"># /home/you/openosint.env

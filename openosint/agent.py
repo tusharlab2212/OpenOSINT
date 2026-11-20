@@ -34,7 +34,7 @@ from openosint.tools.search_rdap import run_rdap_osint
 from openosint.tools.search_domain import run_domain_osint
 from openosint.tools.search_dorks_live import run_dorks_live_osint
 from openosint.tools.search_email import run_email_osint
-from openosint.tools.search_gdelt_geo import run_gdelt_geo_osint, split_geojson_fence
+from openosint.tools.search_gdelt_geo import run_gdelt_geo_osint
 from openosint.tools.search_github import run_github_osint
 from openosint.tools.search_ip import run_ip_osint
 from openosint.tools.search_ip2location import run_ip2location_osint
@@ -46,12 +46,15 @@ from openosint.tools.search_virustotal import run_virustotal_osint
 from openosint.tools.search_whois import run_whois_osint
 from openosint.tools.search_footprint import run_footprint_osint
 from openosint.pivot import investigate_graph_for_agent
+from openosint.tool_output import UNTRUSTED_OUTPUT_RULES, prepare_for_model
 from openosint.tool_policy import (
+    ControlResult,
     ToolBudget,
     current_budget,
     disabled_result,
-    filter_definitions,
+    filter_definitions_for_model,
     is_tool_enabled,
+    model_selected,
     use_budget,
 )
 
@@ -619,6 +622,8 @@ async def _execute_tool(
 
     A tool the current mode doesn't offer returns a structured "disabled" result even
     if the model asks for it anyway; a call past the request's budget is refused.
+    The call runs as model-selected: an active tool also needs OPENOSINT_ALLOW_ACTIVE_AGENT,
+    enforced again inside the tool itself (requires_active) and in auto-pivot.
     """
     # Every request counts against the budget, including unknown and disabled tools: a model
     # that keeps asking for a refused tool must still hit the cap instead of looping forever.
@@ -626,12 +631,13 @@ async def _execute_tool(
     if budget is not None and not budget.try_consume():
         return budget.message()
     if tool_name not in _TOOL_MAP:
-        return f"Error: unknown tool '{tool_name}'."
-    if not is_tool_enabled(tool_name):
-        return disabled_result(tool_name)
-    if on_tool_call is not None:
-        await on_tool_call(tool_name, tool_input)
-    return await _TOOL_MAP[tool_name](tool_input)
+        return ControlResult(f"Error: unknown tool '{tool_name}'.")
+    with model_selected():
+        if not is_tool_enabled(tool_name):
+            return disabled_result(tool_name)
+        if on_tool_call is not None:
+            await on_tool_call(tool_name, tool_input)
+        return await _TOOL_MAP[tool_name](tool_input)
 
 
 def _system_prompt() -> str:
@@ -641,6 +647,7 @@ def _system_prompt() -> str:
         + "\n\nAVAILABLE TOOLS: use only the tools you are given; some tools mentioned above may be "
         "disabled in this mode. If a tool result says a tool is disabled, do not retry it; tell the "
         "user how to enable it. Each user request has a tool-call limit; prefer the most informative calls."
+        "\n\n" + UNTRUSTED_OUTPUT_RULES
     )
 
 
@@ -699,16 +706,14 @@ async def _process_tool_turn(
         result = await _execute_tool(block.name, block.input, on_tool_call)
         tool_calls.append(ToolCall(name=block.name, input=block.input, result=result))
         logger.info("Tool executed: %s → %d chars", block.name, len(result))
-        # The provider gets the stripped text — every subsequent round of
-        # this investigation resends the whole message list, and raw
-        # coordinates are dead weight to a model. ToolCall.result above
-        # keeps the full output for CLI/REPL display.
-        model_text, _ = split_geojson_fence(result)
+        # The provider gets the wrapped, untrusted-marked, capped text without the
+        # GeoJSON fence (openosint.tool_output); ToolCall.result above keeps the full
+        # output for CLI/REPL display.
         tool_results.append(
             {
                 "type": "tool_result",
                 "tool_use_id": block.id,
-                "content": model_text,
+                "content": prepare_for_model(block.name, result),
             }
         )
     messages.append({"role": "user", "content": tool_results})
@@ -745,7 +750,7 @@ async def _process_ollama_tool_turn(
         result = await _execute_tool(tool_name, tool_input, on_tool_call)
         tool_calls.append(ToolCall(name=tool_name, input=tool_input, result=result))
         logger.info("Ollama tool executed: %s → %d chars", tool_name, len(result))
-        messages.append({"role": "tool", "content": result})
+        messages.append({"role": "tool", "content": prepare_for_model(tool_name, result)})
 
 
 # ---------------------------------------------------------------------------
@@ -787,7 +792,7 @@ class OpenOSINTAgent(_BudgetedRun):
                     model=self.model,
                     max_tokens=_MAX_TOKENS,
                     system=_system_prompt(),
-                    tools=filter_definitions(TOOL_DEFINITIONS),  # type: ignore[arg-type]
+                    tools=filter_definitions_for_model(TOOL_DEFINITIONS),  # type: ignore[arg-type]
                     messages=messages,  # type: ignore[arg-type]
                 )
                 if response.stop_reason == "end_turn":
@@ -911,7 +916,7 @@ class OllamaAgent(_BudgetedRun):
                 response = await client.chat(
                     model=self.model,
                     messages=messages,
-                    tools=_to_ollama_tools(filter_definitions(TOOL_DEFINITIONS)),
+                    tools=_to_ollama_tools(filter_definitions_for_model(TOOL_DEFINITIONS)),
                 )
                 msg = response.message
                 if not msg.tool_calls:
@@ -999,7 +1004,7 @@ async def _process_openai_tool_turn(
             {
                 "role": "tool",
                 "tool_call_id": openai_tool_call.id,
-                "content": result,
+                "content": prepare_for_model(tool_name, result),
             }
         )
 
@@ -1059,7 +1064,7 @@ class OpenAICompatibleAgent(_BudgetedRun):
                 response = await client.chat.completions.create(
                     model=self.model,
                     messages=messages,
-                    tools=_to_ollama_tools(filter_definitions(TOOL_DEFINITIONS)),
+                    tools=_to_ollama_tools(filter_definitions_for_model(TOOL_DEFINITIONS)),
                     tool_choice="auto",
                     max_tokens=_MAX_TOKENS,
                 )
