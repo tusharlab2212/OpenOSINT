@@ -20,23 +20,23 @@ one is loaded and B does not exist yet, a one-line stderr hint points at the exp
 `openosint config import`. When B and the legacy file give a variable different
 values, B wins and a stderr warning names both files and the variable (never values).
 
-Legacy `.env` resolution (first match wins):
+Legacy `.env` resolution (first match wins), identical for every entry point:
   1. `$OPENOSINT_ENV_FILE`, if set — fail loudly on a bad path rather than
      silently loading nothing.
-  2. For the CLI and web server (`prefer_package_root=False`, the default):
-     a `.env` found by searching upward from the current working directory
-     (python-dotenv's own `usecwd=True` search) — the common case for a
-     `pip install`ed `openosint` run from wherever the user's `.env` lives —
-     then the repo-root `.env` next to this package as a last resort, for a
-     source/editable checkout.
-     For the MCP server (`prefer_package_root=True`): the same two checks
-     in the OPPOSITE order — repo-root first, cwd search last. Claude
-     Desktop and other MCP hosts launch this entry point with an arbitrary
-     cwd (often the user's home directory or wherever the host process
-     itself runs from), so an upward cwd search can pick up an unrelated
-     `.env` before the repo-root one; for MCP, `OPENOSINT_ENV_FILE` (or the
-     client's own `env` block) is the reliable way to point at a specific
-     file — see the README.
+  2. The repo-root `.env` next to this package, for a source/editable checkout
+     (under a regular pip install this resolves inside site-packages and is
+     never populated).
+
+A `.env` in the current working directory or any parent is NEVER loaded.
+Loading it would hand configuration (API keys, base URLs, proxies, PATH, active
+mode) to whoever wrote a file in whatever directory the command happens to be
+run from: a cloned repository, an unpacked archive, a shared folder. Such a
+file is only detected, never read, and a one-line stderr notice names it and
+says how to use it on purpose (`OPENOSINT_ENV_FILE`, or
+`openosint config import`, which defaults to that file). The
+`prefer_package_root` argument is kept for API compatibility and no longer
+changes anything: with the directory search gone there is only one
+non-explicit location.
 
 `[*] Loaded .env: <path>` is always printed to stderr, never stdout, in
 every entry point — stdout must stay clean for the MCP protocol and for
@@ -91,6 +91,11 @@ def _load_file(path: str | Path, origin: str) -> None:
 
 
 def _resolve_path(*, prefer_package_root: bool = False) -> str:
+    """The legacy .env to load: $OPENOSINT_ENV_FILE, else the repo-root .env, else "".
+
+    Never searches the working directory (see the module docstring).
+    `prefer_package_root` is accepted for compatibility and has no effect.
+    """
     explicit = os.environ.get("OPENOSINT_ENV_FILE", "").strip()
     if explicit:
         if not Path(explicit).is_file():
@@ -98,18 +103,42 @@ def _resolve_path(*, prefer_package_root: bool = False) -> str:
         return explicit
 
     repo_root_env = Path(__file__).resolve().parent.parent / ".env"
-
-    if prefer_package_root:
-        if repo_root_env.is_file():
-            return str(repo_root_env)
-        return find_dotenv(usecwd=True)
-
-    cwd_env = find_dotenv(usecwd=True)
-    if cwd_env:
-        return cwd_env
     if repo_root_env.is_file():
         return str(repo_root_env)
     return ""
+
+
+def ignored_working_dir_env() -> Path | None:
+    """The nearest `.env` in the working directory or a parent that is NOT loaded.
+
+    Detection only: the file's existence is checked, its contents are never read
+    here. Returns None when there is no such file, or when it is the same file
+    load_env() loaded on purpose (e.g. running from the repo root, or
+    OPENOSINT_ENV_FILE pointing at it).
+    """
+    try:
+        found = find_dotenv(usecwd=True)
+    except OSError:  # e.g. the working directory was deleted: nothing to report
+        return None
+    if not found:
+        return None
+    path = Path(found)
+    if _loaded_path and path.resolve() == Path(_loaded_path).resolve():
+        return None
+    return path
+
+
+def _notice_ignored_working_dir_env(config_file: Path) -> None:
+    ignored = ignored_working_dir_env()
+    if ignored is None:
+        return
+    print(
+        f"[!] Not loading {ignored}: .env files in the working directory or its parents "
+        "are no longer read automatically. To use it on purpose, set "
+        f"OPENOSINT_ENV_FILE={ignored} or run `openosint config import` to copy its "
+        f"keys into {config_file}.",
+        file=sys.stderr,
+    )
 
 
 def _hint_import(legacy: Path, config_file: Path) -> None:
@@ -151,7 +180,7 @@ def load_env(*, prefer_package_root: bool = False) -> Path | None:
     Safe to call from multiple entry points/functions — every call after
     the first is a no-op that returns the cached result, so the banner
     line below is never printed twice for one process. `prefer_package_root`
-    swaps the cwd-search/repo-root priority — see the module docstring.
+    is kept for compatibility and has no effect — see the module docstring.
 
     Raises FileNotFoundError if `$OPENOSINT_ENV_FILE` is set but points at
     a nonexistent path — see `load_env_or_exit()` for the CLI-friendly
@@ -183,6 +212,7 @@ def load_env(*, prefer_package_root: bool = False) -> Path | None:
 
     _loaded_path = path or None
     _load_attempted = True
+    _notice_ignored_working_dir_env(config_file)
     return Path(_loaded_path) if _loaded_path else None
 
 
@@ -221,7 +251,10 @@ def missing_var_clause(var_name: str) -> str:
     if path:
         hint = f".env loaded from {path}, but it doesn't set this variable"
     else:
-        hint = f"no .env found in {os.getcwd()}; set OPENOSINT_ENV_FILE or export the variable"
+        hint = (
+            f"no .env loaded; a .env in {os.getcwd()} or its parents is not read "
+            "automatically. Set OPENOSINT_ENV_FILE or export the variable"
+        )
     return f"{var_name} environment variable is not set ({hint})."
 
 

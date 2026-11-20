@@ -111,6 +111,8 @@ class TestPrecedence:
         monkeypatch.chdir(cwd)
         # Keep the repo's own .env out of the "package root" fallback.
         monkeypatch.setattr(env_module, "__file__", str(tmp_path / "pkg" / "openosint" / "env.py"))
+        # The legacy file is named explicitly: a cwd .env is never loaded on its own.
+        monkeypatch.setenv("OPENOSINT_ENV_FILE", str(cwd / ".env"))
         return cwd
 
     def test_real_env_beats_config_beats_legacy(self, tmp_path, monkeypatch, home, fresh_env):
@@ -145,6 +147,7 @@ class TestPrecedence:
 
     def test_a_saved_value_survives_a_restart(self, tmp_path, monkeypatch, home, fresh_env):
         self._loaded(tmp_path, monkeypatch, home)
+        monkeypatch.delenv("OPENOSINT_ENV_FILE")  # no legacy file in this scenario
         config_store.write_config({"RESTART_KEY": "persisted"})
         os.environ.pop("RESTART_KEY", None)  # a new process starts without it
 
@@ -193,17 +196,19 @@ class TestLegacyEnvIsNeverCopiedImplicitly:
 
         assert "config import" not in capsys.readouterr().err
 
-    def test_no_hint_when_a_cwd_env_is_the_one_loaded(
+    def test_no_hint_when_an_explicit_env_file_is_the_one_loaded(
         self, package_root, home, tmp_path, monkeypatch, capsys
     ):
         (package_root / ".env").write_text("SHODAN_API_KEY=package\n")
         work = tmp_path / "work"
         work.mkdir()
-        (work / ".env").write_text("SHODAN_API_KEY=cwd\n")
+        (work / ".env").write_text("SHODAN_API_KEY=explicit\n")
         monkeypatch.chdir(work)
+        monkeypatch.setenv("OPENOSINT_ENV_FILE", str(work / ".env"))
 
         env_module.load_env()
 
+        assert os.environ["SHODAN_API_KEY"] == "explicit"
         assert "config import" not in capsys.readouterr().err
         assert not home.exists()
 
@@ -222,6 +227,8 @@ class TestShadowWarning:
         work.mkdir()
         monkeypatch.chdir(work)
         monkeypatch.setattr(env_module, "__file__", str(tmp_path / "pkg" / "openosint" / "env.py"))
+        # The legacy file is named explicitly: a cwd .env is never loaded on its own.
+        monkeypatch.setenv("OPENOSINT_ENV_FILE", str(work / ".env"))
         return work
 
     def test_names_the_winning_file_the_losing_file_and_only_differing_keys(

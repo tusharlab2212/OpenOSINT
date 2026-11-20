@@ -1207,9 +1207,15 @@ def _handle_config(args: argparse.Namespace) -> None:
     from pathlib import Path
 
     from openosint.config_cli import run_config_import
-    from openosint.env import loaded_env_path
+    from openosint.env import ignored_working_dir_env, loaded_env_path
 
-    source = Path(args.config_source).expanduser() if args.config_source else loaded_env_path()
+    # Without --from: the .env load_env() loaded, else the working-directory .env it
+    # deliberately did not load (the migration path for "keys in ./.env"). Import still
+    # lists names and asks before copying anything.
+    if args.config_source:
+        source = Path(args.config_source).expanduser()
+    else:
+        source = loaded_env_path() or ignored_working_dir_env()
     only = [n.strip() for n in args.only.split(",") if n.strip()] if args.only else None
     sys.exit(
         run_config_import(source, only, args.yes, interactive=sys.stdin.isatty() and sys.stdout.isatty())

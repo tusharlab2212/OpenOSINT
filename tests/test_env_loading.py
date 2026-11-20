@@ -3,10 +3,10 @@
 Tests for openosint.env, the shared .env loader used by every entry point,
 and the ANTHROPIC_MODEL / OPENOSINT_MODEL precedence it enables in agent.py.
 
-Only two tests here use a subprocess — TestCliPicksUpDotenvFromCwd and
+Only two tests here use a subprocess — TestCliIgnoresDotenvInCwd and
 TestJsonStdoutStaysClean — because each proves something about a real
-process's stdout/stderr streams that an in-process call can't: a fresh
-non-editable-style install actually reading .env from a real cwd, and a
+process's stdout/stderr streams that an in-process call can't: a real
+process NOT reading a .env from its cwd (and saying so on stderr), and a
 --json command's stdout staying pure JSON once the .env banner exists at
 all. openosint.env.load_env() memoizes its result for the life of a
 process, so a monkeypatched in-process call would only prove the
@@ -44,10 +44,10 @@ def _reset_env_module_state(monkeypatch):
     monkeypatch.setattr(env_module, "_load_attempted", False)
 
 
-class TestCliPicksUpDotenvFromCwd:
-    """The one subprocess test — see module docstring for why."""
+class TestCliIgnoresDotenvInCwd:
+    """Subprocess test — see module docstring for why."""
 
-    def test_cli_picks_up_dotenv_from_cwd(self, tmp_path):
+    def test_cli_does_not_load_dotenv_from_cwd(self, tmp_path):
         (tmp_path / ".env").write_text("BRIGHTDATA_API_KEY=dummy-cwd-key\n")
 
         probe = (
@@ -66,7 +66,10 @@ class TestCliPicksUpDotenvFromCwd:
 
         assert result.returncode == 0, result.stderr
         last_line = result.stdout.strip().splitlines()[-1]
-        assert json.loads(last_line)["BRIGHTDATA_API_KEY"] == "dummy-cwd-key"
+        assert json.loads(last_line)["BRIGHTDATA_API_KEY"] is None
+        assert "Not loading" in result.stderr
+        assert str(tmp_path / ".env") in result.stderr
+        assert "dummy-cwd-key" not in result.stdout + result.stderr
 
 
 class TestLoadEnvPrecedence:
@@ -122,7 +125,7 @@ class TestMissingVarMessage:
         message = env_module.missing_var_message("BRIGHTDATA_API_KEY")
 
         assert "BRIGHTDATA_API_KEY" in message
-        assert "no .env found" in message
+        assert "no .env loaded" in message
         assert str(elsewhere) in message
         assert "OPENOSINT_ENV_FILE" in message
 
@@ -179,12 +182,12 @@ class TestAnthropicModelPrecedence:
         assert default_anthropic_model() == DEFAULT_ANTHROPIC_MODEL
 
 
-class TestCliWebPreferCwdOverRepoRoot:
-    """CLI/web (prefer_package_root=False, the default) must prefer the cwd
-    .env over a repo-root one — the opposite of the MCP server's priority
-    (see tests/test_mcp_server_dotenv.py::TestRepoRootAndCwdFallback)."""
+class TestCliWebIgnoreCwdEnv:
+    """CLI/web (prefer_package_root=False, the default) load the repo-root .env
+    and never a cwd .env — the same rule as the MCP server (see
+    tests/test_mcp_server_dotenv.py::TestRepoRootAndCwdFallback)."""
 
-    def test_cwd_env_wins_over_repo_root_env(self, tmp_path, monkeypatch):
+    def test_repo_root_env_is_loaded_and_cwd_env_ignored(self, tmp_path, monkeypatch, capsys):
         _reset_env_module_state(monkeypatch)
         import openosint.env as env_module
 
@@ -202,7 +205,47 @@ class TestCliWebPreferCwdOverRepoRoot:
 
         env_module.load_env(prefer_package_root=False)
 
-        assert os.environ["MARKER_Z"] == "cwd-value"
+        assert os.environ["MARKER_Z"] == "repo-root-value"
+        err = capsys.readouterr().err
+        assert "Not loading" in err and str(work_dir / ".env") in err
+
+    def test_parent_directory_env_is_not_loaded(self, tmp_path, monkeypatch, capsys):
+        _reset_env_module_state(monkeypatch)
+        import openosint.env as env_module
+
+        monkeypatch.setattr(
+            env_module, "__file__", str(tmp_path / "no-repo-root" / "openosint" / "env.py")
+        )
+        parent = tmp_path / "parent"
+        child = parent / "child"
+        child.mkdir(parents=True)
+        (parent / ".env").write_text("MARKER_P=parent-value\n")
+        monkeypatch.chdir(child)
+        monkeypatch.delenv("OPENOSINT_ENV_FILE", raising=False)
+        monkeypatch.delenv("MARKER_P", raising=False)
+
+        assert env_module.load_env() is None
+
+        assert "MARKER_P" not in os.environ
+        err = capsys.readouterr().err
+        assert "Not loading" in err and str(parent / ".env") in err
+
+    def test_no_notice_when_the_cwd_env_is_loaded_on_purpose(self, tmp_path, monkeypatch, capsys):
+        _reset_env_module_state(monkeypatch)
+        import openosint.env as env_module
+
+        monkeypatch.setattr(
+            env_module, "__file__", str(tmp_path / "no-repo-root" / "openosint" / "env.py")
+        )
+        (tmp_path / ".env").write_text("MARKER_Q=explicit-value\n")
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.setenv("OPENOSINT_ENV_FILE", str(tmp_path / ".env"))
+        monkeypatch.delenv("MARKER_Q", raising=False)
+
+        env_module.load_env()
+
+        assert os.environ["MARKER_Q"] == "explicit-value"
+        assert "Not loading" not in capsys.readouterr().err
 
 
 class TestJsonStdoutStaysClean:
@@ -215,12 +258,14 @@ class TestJsonStdoutStaysClean:
         # (the banner fires) while keeping this call network-free: with no
         # BRIGHTDATA_API_KEY set, run_dorks_live_osint returns the
         # missing-key message with no network call.
-        (tmp_path / ".env").write_text("UNRELATED_MARKER=loaded\n")
+        # Loaded through OPENOSINT_ENV_FILE: a cwd .env is no longer read.
+        explicit = tmp_path / "explicit.env"
+        explicit.write_text("UNRELATED_MARKER=loaded\n")
 
         result = subprocess.run(
             [_PYTHON, "-m", "openosint.cli", "--json", "search-dorks-live", "example.com"],
             cwd=str(tmp_path),
-            env=_subprocess_env(),
+            env={**_subprocess_env(), "OPENOSINT_ENV_FILE": str(explicit)},
             capture_output=True,
             text=True,
             timeout=30,
