@@ -44,7 +44,7 @@ console.log('\ngroupFindings keeps observations apart from assumptions and concl
 const groups = ws.groupFindings([
   { id: 1, kind: 'conclusion' }, { id: 2, kind: 'observation' }, { id: 3, kind: 'assumption' }, { id: 4, kind: 'weird' },
 ]);
-assert(eq(Object.keys(groups), ['observation', 'assumption', 'conclusion']), 'fixed group order');
+assert(eq(Object.keys(groups), ['observation', 'reported', 'assumption', 'conclusion']), 'fixed group order, reported claims apart from observations');
 assert(eq(groups.observation.map((f) => f.id), [2, 4]), 'unknown kind falls under observations');
 assert(groups.assumption.length === 1 && groups.conclusion.length === 1, 'assumption and conclusion grouped');
 assert(eq(ws.groupFindings(undefined).observation, []), 'no findings: empty groups');
@@ -64,6 +64,45 @@ console.log('\nlabels');
 assert(ws.targetLabel('domain', 'example.com') === 'domain: example.com', 'target label');
 assert(ws.targetLabel(null, null) === '', 'no target: empty');
 assert(ws.formatTimestamp('') === '' && ws.formatTimestamp('nonsense') === 'nonsense', 'timestamps never throw');
+
+console.log('\nprovenance and reliability');
+assert(ws.groupFindings([{ id: 9, kind: 'reported' }]).reported.length === 1, 'reported claims grouped on their own');
+assert(eq(ws.EVIDENCE_KINDS, ['unspecified', 'observation', 'reported']), 'evidence provenance kinds');
+assert(ws.defaultsFor('evidence', '2026-01-02').kind === 'observation', 'new evidence preselects direct observation');
+assert(ws.defaultsFor('sources').reliability === 'unassessed', 'a new source starts unassessed');
+assert(ws.reliabilityLabel('B') === 'B — Usually reliable', 'reliability label');
+assert(ws.reliabilityLabel('Z') === 'Not assessed' && ws.reliabilityLabel(undefined) === 'Not assessed', 'unknown rating shown as not assessed');
+assert(ws.validateForm('sources', { url: 'https://example.com/', reliability: 'B', reliability_rationale: '' }).includes('Why this rating'), 'rating without rationale rejected');
+assert(ws.validateForm('sources', { url: 'https://example.com/', reliability: 'B', reliability_rationale: 'Official registry' }) === '', 'rating with rationale accepted');
+assert(ws.validateForm('sources', { url: 'https://example.com/', reliability: 'unassessed' }) === '', 'unassessed needs no rationale');
+assert(ws.validateForm('sources', { url: 'https://example.com/', original_url: 'javascript:x' }).includes('Original URL'), 'original URL must be http(s)');
+const srcFields = ws.FIELDS.sources.map((f) => f.name);
+for (const name of ['source_type', 'original_url', 'published_on', 'accessed_on', 'reliability', 'reliability_rationale', 'title']) {
+  assert(srcFields.includes(name), `source form has ${name}`);
+}
+assert(ws.FIELDS.sources.find((f) => f.name === 'url').lockedOnEdit === true, 'source URL is read-only when editing');
+
+console.log('\ntraceability');
+const inv = {
+  sources: [{ id: 's1', url: 'https://example.com/a' }, { id: 's2', url: 'https://example.com/b' }],
+  findings: [
+    { id: 'f1', title: 'cites s1', source_id: 's1' },
+    { id: 'f2', title: 'via evidence', source_id: null },
+    { id: 'f3', title: 'cites s1 and has its evidence', source_id: 's1' },
+  ],
+  evidence: [
+    { id: 'e1', source_id: 's1', finding_id: 'f2' },
+    { id: 'e2', source_id: 's1', finding_id: 'f3' },
+    { id: 'e3', source_id: 's2', finding_id: 'f2' },
+  ],
+};
+const tr = ws.sourceTrace(inv, 's1');
+assert(eq(tr.findings.map((f) => f.id), ['f1', 'f3']), 'findings citing the source directly');
+assert(eq(tr.evidence.map((e) => e.id), ['e1', 'e2']), 'evidence from the source');
+assert(eq(tr.viaEvidence.map((f) => f.id), ['f2']), 'findings supported through its evidence, without duplicates');
+const sup = ws.findingSupport(inv, 'f2');
+assert(eq(sup.map((e) => [e.id, e.source.url]), [['e1', 'https://example.com/a'], ['e3', 'https://example.com/b']]), 'supporting evidence with its sources');
+assert(eq(ws.sourceTrace({}, 'x'), { findings: [], evidence: [], viaEvidence: [] }), 'empty investigation traces to nothing');
 
 console.log(`\n${passed} passed, ${failed} failed`);
 if (failed > 0) process.exit(1);

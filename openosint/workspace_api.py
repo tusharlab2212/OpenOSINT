@@ -53,6 +53,13 @@ class SourceBody(_Body):
     url: Optional[str] = _URL
     title: Optional[str] = _TITLE
     notes: Optional[str] = _TEXT
+    source_type: Optional[Literal[ws.SOURCE_TYPES]] = None  # type: ignore[valid-type]
+    original_url: Optional[str] = _URL
+    published_on: Optional[str] = _DATE
+    accessed_on: Optional[str] = _DATE
+    # Validated by the store (accepts any letter case); assigned only by the user.
+    reliability: Optional[str] = Field(default=None, max_length=20)
+    reliability_rationale: Optional[str] = _TEXT
 
 
 class FindingBody(_Body):
@@ -79,6 +86,7 @@ class EvidenceBody(_Body):
     finding_id: Optional[str] = _ID
     collected_on: Optional[str] = _DATE
     notes: Optional[str] = _TEXT
+    kind: Optional[Literal[ws.EVIDENCE_KINDS]] = None  # type: ignore[valid-type]
 
 
 _SECTION_BODIES: dict[str, type[_Body]] = {
@@ -150,6 +158,16 @@ def register_workspace_routes(
         _check(request)
         await _run(lambda s: s.delete_investigation(inv_id))
         return {"status": "deleted", "id": inv_id}
+
+    @app.get("/api/investigations/{inv_id}/sources/{item_id}/trace")
+    async def trace_source(request: Request, inv_id: str, item_id: str):
+        _check(request)
+        return await _run(lambda s: s.trace_source(inv_id, item_id))
+
+    @app.get("/api/investigations/{inv_id}/findings/{item_id}/trace")
+    async def trace_finding(request: Request, inv_id: str, item_id: str):
+        _check(request)
+        return await _run(lambda s: s.trace_finding(inv_id, item_id))
 
     for section, model in _SECTION_BODIES.items():
         _add_section_routes(app, section, model, _check, _run)

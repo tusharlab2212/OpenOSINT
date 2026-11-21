@@ -29,20 +29,23 @@ The workspace only works on a local, unrestricted instance. A public or demo ins
 |---|---|
 | Overview | Title, description, created and updated dates, and how many items each tab holds |
 | Targets | The identifiers you research: username, domain, email, URL, IP, phone or other. Domains and emails are lower-cased; duplicates are refused. |
-| Findings | Your findings, each with a title, description, type, confidence, source URL, target, date recorded and investigator notes |
-| Evidence | Evidence entries: a description, source URL, date collected, and optionally the target and the finding it supports |
-| Sources | Every source URL the findings and evidence rely on, with how many of each use it. You can also add a source by hand. |
+| Findings | Your findings, each with a title, description, provenance, confidence, source URL, target, date recorded and investigator notes, plus the evidence that supports it |
+| Evidence | Evidence entries: a description, provenance, source URL, date collected, and optionally the target and the finding it supports |
+| Sources | Every source the findings and evidence rely on, with its type, dates, your reliability rating and what cites it. You can also add a source by hand. |
 | Notes | Free-form investigator notes |
 
 Every item can be edited and deleted. Deleting a target, source or finding removes the link from the items that pointed to it; the items themselves stay.
 
-## Findings: observation, assumption or conclusion
+## Provenance: observation, reported claim, assumption or conclusion
 
-Each finding has a type, and the Findings tab groups them so the difference stays visible:
+Each finding records where it comes from, and the Findings tab groups them so the difference stays visible:
 
-- **Observation**: what a source shows. Give it a source URL.
+- **Direct observation**: what you saw in a source yourself. Give it a source URL.
+- **Source-reported claim**: what a source says, which you have not verified. Give it a source URL.
 - **Assumption**: something you take as given but have not supported with a source.
-- **Conclusion**: what you infer from the observations.
+- **Analyst conclusion**: what you infer from the above.
+
+Evidence entries have a provenance too: **direct observation** or **source-reported claim**. Evidence saved before this field existed shows **not specified**; it is never guessed.
 
 Confidence is **low**, **medium** or **high**. A new finding starts at **low**, and nothing raises it for you: set it yourself when the evidence supports it, not because a tool returned a result.
 
@@ -50,9 +53,44 @@ Confidence is **low**, **medium** or **high**. A new finding starts at **low**, 
 
 A source URL typed into a finding or an evidence entry is added to the Sources tab automatically, or linked to the existing source with the same URL. Only `http://` and `https://` URLs are accepted. URLs are stored, never fetched.
 
+A source records:
+
+| Field | Meaning |
+|---|---|
+| URL | Where you accessed it. Kept exactly as first entered and read-only afterwards, because findings and evidence cite it: a different URL is a different source. |
+| Source title | The page or document title |
+| Source type | website, social media, news, government, company, court record, dataset, archive, document, other, or unspecified |
+| Original URL | Where the content originally lived, when the URL above is a copy or an archive |
+| Published / observed on | When the source published the content, or when you observed it |
+| Date accessed | When you accessed it |
+| Reliability | Your assessment, below |
+
+### Reliability
+
+Reliability uses the A–F scale common in intelligence source grading:
+
+| Rating | Meaning |
+|---|---|
+| A | Completely reliable |
+| B | Usually reliable |
+| C | Fairly reliable |
+| D | Not usually reliable |
+| E | Unreliable |
+| F | Reliability cannot be judged |
+
+Every source starts **not assessed**, including those added automatically. Only you set a rating, and a rating needs a written rationale ("Why this rating"), which is shown with it. The date of the assessment is recorded when you set or change the rating or rationale. OpenOSINT never rates a source and never changes your rating. The rating describes the source, not any one claim in it: record how far you trust a claim in the finding's confidence.
+
+### Tracing
+
+- A source card lists the findings that cite it, the evidence taken from it, and the findings that evidence supports.
+- A finding card lists its supporting evidence with each entry's provenance, source and source rating.
+- Finding and evidence cards show the cited source's rating next to its link.
+
+Click any listed item to open it.
+
 ## Where the data is
 
-Everything is in `workspace.db`, a SQLite file in the data directory (`~/.openosint/`, or `$OPENOSINT_HOME`). It persists across restarts. Like the rest of the data directory, a new directory is created owner-only (0700) and the new database file 0600. Nothing is sent anywhere. Back up or move an investigation by copying that file while OpenOSINT is not running.
+Everything is in `workspace.db`, a SQLite file in the data directory (`~/.openosint/`, or `$OPENOSINT_HOME`). It persists across restarts. A database from an earlier version is upgraded in place the first time it is opened: new fields are added empty or unassessed, and nothing already saved is changed. An older OpenOSINT cannot open it afterwards. Like the rest of the data directory, a new directory is created owner-only (0700) and the new database file 0600. Nothing is sent anywhere. Back up or move an investigation by copying that file while OpenOSINT is not running.
 
 ## API
 
@@ -68,6 +106,8 @@ The page uses these local routes, which you can also call from a script on the s
 | `POST /api/investigations/{id}/{tab}` | Add to `targets`, `findings`, `evidence`, `sources` or `notes` |
 | `PATCH /api/investigations/{id}/{tab}/{item_id}` | Edit an item; send `""` to clear a field or link |
 | `DELETE /api/investigations/{id}/{tab}/{item_id}` | Delete an item |
+| `GET /api/investigations/{id}/sources/{item_id}/trace` | A source with the findings that cite it, its evidence, and the findings that evidence supports |
+| `GET /api/investigations/{id}/findings/{item_id}/trace` | A finding with its source and its supporting evidence, each with its source |
 
 Invalid input gets a 422 with the reason, an unknown id a 404, and a duplicate target or source URL a 409. Browser requests from another origin are rejected, as for every `/api` route.
 
@@ -76,4 +116,6 @@ Invalid input gets a 422 with the reason, an unknown id a 404, and a duplicate t
 - One user, one machine: there are no accounts, sharing or sync.
 - Findings are not created from chat or tool results automatically; you record them.
 - Evidence is a description and a link, not a stored copy: attaching files or archived snapshots is not supported yet.
+- Reliability is one rating per source. There is no separate rating per claim, and no history of earlier ratings: changing a rating replaces it (the new rationale and date are what you see).
+- A source's URL cannot be corrected after it is saved; add the right URL as a new source and move the links.
 - No export yet. The data is a plain SQLite file you can read with any SQLite tool.
