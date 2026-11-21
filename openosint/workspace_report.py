@@ -967,6 +967,22 @@ def _segs_pdf(segs: list) -> str:
     return "".join(out)
 
 
+# Field values longer than this are laid out as paragraphs in the PDF, not table cells.
+LONG_FIELD = 600
+
+
+def _seg_length(segs: list) -> int:
+    total = 0
+    for seg in segs:
+        if isinstance(seg, dict):
+            total += len(str(seg.get("text") or seg.get("url") or "")) + len(
+                str(seg.get("ref") or "")
+            )
+        else:
+            total += len(str(seg))
+    return total
+
+
 def render_pdf(model: dict) -> bytes:
     from reportlab.lib import colors
     from reportlab.lib.pagesizes import A4
@@ -1073,10 +1089,12 @@ def render_pdf(model: dict) -> bytes:
                     block.append(para(" | ".join(_p(text) for text, _ in item.badges), "badges"))
                 for warning in item.warnings:
                     block.append(para(_p(warning), "warn"))
-                if item.fields:
-                    rows = [
-                        [para(_p(k), "field"), para(_segs_pdf(v), "field")] for k, v in item.fields
-                    ]
+                # A table row cannot break across pages, so a long value (a rationale, a list
+                # of many cross-references) goes below the table as a paragraph that can.
+                short = [(k, v) for k, v in item.fields if _seg_length(v) <= LONG_FIELD]
+                long_ = [(k, v) for k, v in item.fields if _seg_length(v) > LONG_FIELD]
+                if short:
+                    rows = [[para(_p(k), "field"), para(_segs_pdf(v), "field")] for k, v in short]
                     table = Table(rows, colWidths=[42 * mm, None])
                     table.setStyle(
                         TableStyle(
@@ -1090,12 +1108,15 @@ def render_pdf(model: dict) -> bytes:
                         )
                     )
                     block.append(table)
+                for k, v in long_:
+                    block.append(para(f"<b>{_p(k)}:</b> {_segs_pdf(v)}", "body"))
                 if item.body:
                     block.append(para(_p(item.body), "body"))
                 if item.notes:
                     block.append(para(f"Analyst notes: {_p(item.notes)}", "notes"))
                 # Keep short items on one page; long ones may break across pages.
-                if len(item.body) + len(item.notes) < 1500:
+                size = len(item.body) + len(item.notes) + sum(_seg_length(v) for _, v in long_)
+                if size < 1500:
                     story.append(KeepTogether(block))
                 else:
                     story.extend(block)

@@ -53,12 +53,17 @@ def test_list_investigations_with_counts(store, inv):
     assert {i["id"] for i in listed} == {inv["id"], other["id"]}
     # Most recently updated first: adding items touched `inv`.
     assert listed[0]["id"] == inv["id"]
+    # Every section is counted, so the list's item total covers the graph and timeline too.
     assert listed[0]["counts"] == {
         "targets": 1,
         "sources": 0,
         "findings": 0,
         "notes": 1,
         "evidence": 0,
+        "entities": 0,
+        "relationships": 0,
+        "events": 0,
+        "correlations": 0,
     }
 
 

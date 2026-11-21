@@ -546,3 +546,31 @@ def test_report_tab_wiring():
         in SCRIPT
     )
     assert "return `/api/investigations/${encodeURIComponent(invId)}/report?${params}`;" in SCRIPT
+
+
+def test_pdf_handles_fields_longer_than_a_page(store, tmp_path):
+    # Regression: a field value taller than a page (here a 6,000-character rationale, well
+    # under the 20,000 the store accepts) made reportlab raise LayoutError: the export 500'd.
+    inv = store.create_investigation("Long fields")
+    i = inv["id"]
+    long_text = "x" * 6000  # no spaces, so it cannot wrap on words either
+    store.add_item(
+        i,
+        "sources",
+        {
+            "url": "https://example.com/" + "a" * 2000,
+            "reliability": "C",
+            "reliability_rationale": long_text,
+        },
+    )
+    store.add_item(i, "findings", {"title": "Ёжик 東京 مرحبا 🙂", "description": long_text})
+    model = report.build_report(store.get_workspace(i), report.parse_options(), NOW)
+    pdf = report.render_pdf(model)
+    assert pdf.startswith(b"%PDF-")
+    if shutil.which("pdftotext"):
+        path = tmp_path / "long.pdf"
+        path.write_bytes(pdf)
+        text = subprocess.run(
+            ["pdftotext", str(path), "-"], capture_output=True, text=True, check=True
+        ).stdout
+        assert "Rationale:" in text and text.count("x") >= 12000  # both long values are all there

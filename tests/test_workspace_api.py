@@ -290,3 +290,25 @@ def test_element_builder_flattens_nested_children():
     # Regression: metadata rows are built as nested arrays; a one-level flat() rendered
     # them as "[object HTMLElement]" text instead of elements.
     assert "children.flat(Infinity)" in SCRIPT
+
+
+def test_graph_is_released_before_any_redraw():
+    # Regression: going back to the investigation list left the graph instance alive,
+    # because the release happened after render()'s early return for the list view.
+    render = SCRIPT[SCRIPT.index("  function render() {") :]
+    render = render[: render.index("\n  }\n")]
+    assert render.index("graphView.cy.destroy();") < render.index("if (!state.current) {")
+
+
+def test_overview_counts_every_tab():
+    for label in ("Timeline events", "Correlations", "Entities", "Relationships"):
+        assert f"['{label}', String(inv." in SCRIPT, label
+
+
+def test_help_link_works_without_a_source_checkout():
+    # docs/ is not in the wheel or the Docker image, so a local /docs link 404s there.
+    assert 'href="/docs/' not in PAGE
+    assert (
+        'href="https://github.com/tusharlab2212/OpenOSINT/blob/main/site/content/docs/workspace.md"'
+        in PAGE
+    )

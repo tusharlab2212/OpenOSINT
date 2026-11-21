@@ -25,7 +25,7 @@ Or from a checkout of this fork, without installing: `uv run --locked openosint 
 
 ## The three views
 
-The left rail also has **Workspace**, which opens the [research workspace](/docs/workspace/): investigations with their targets, findings, sources, evidence and notes, saved locally.
+The left rail also has **Workspace**, which opens the [research workspace](/docs/workspace/): investigations with their targets, findings, sources, evidence and notes, an entity graph, a timeline and a report you can export as HTML or PDF, all saved locally.
 
 - **Chat.** Ask in plain language. Tool output streams in as result cards, each tied to the tool call that produced it.
 - **Globe.** Recent worldwide news, placed on a map by the `search_gdelt_geo` tool. Hold Shift and drag to search only inside an area. Nothing is downloaded until you first use it.

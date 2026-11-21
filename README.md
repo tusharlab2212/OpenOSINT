@@ -116,7 +116,7 @@ Other clients: [MCP docs](https://openosint.tech/docs/mcp/) · [Agent Skill](htt
 ## Go deeper
 
 - **Web UI:** `openosint web`, streaming chat, a news globe and a graph view. [Docs](https://openosint.tech/docs/web-ui/)
-- **Research workspace:** `/workspace` in the web UI. Keep each investigation's targets, findings (observation, assumption or conclusion, with a confidence level), sources, evidence and notes, saved locally in `workspace.db`. [Docs](site/content/docs/workspace.md)
+- **Research workspace:** `/workspace` in the web UI. Keep each investigation's targets, findings (with provenance and an investigator-assigned confidence), sources (with your reliability rating), evidence, notes, an entity relationship graph and a timeline with manual correlations, and export it as an HTML or PDF report. Everything is entered by you and saved locally in `workspace.db`. [Docs](site/content/docs/workspace.md)
 - **REPL:** `openosint` with no arguments. [CLI reference](https://openosint.tech/docs/cli/)
 - **MCP server:** `uv run --locked --project /absolute/path/to/OpenOSINT openosint-mcp`. [Client configs](https://openosint.tech/docs/mcp/)
 
