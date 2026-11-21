@@ -257,10 +257,13 @@ def test_links_only_through_the_safe_url_check():
 
 
 def test_script_only_calls_local_investigation_routes():
-    urls = set(re.findall(r"api\('(?:GET|POST|PATCH|DELETE)', `?'?([^`',]+)", SCRIPT))
-    allowed = ("/api/investigations", "base", "${base}/")
+    urls = set(re.findall(r"api\('(?:GET|POST|PUT|PATCH|DELETE)', `?'?([^`',]+)", SCRIPT))
+    allowed = ("/api/investigations", "base", "${base}/", "${graphBase()}/")
     assert urls and all(u.startswith(allowed) for u in urls), urls
     assert "const base = `/api/investigations/${state.current.id}/${section}`;" in SCRIPT
+    # The graph's route helper (and its `base`) only ever point at this investigation's routes.
+    assert "return `/api/investigations/${state.current.id}`;" in SCRIPT
+    assert "const base = `${graphBase()}/${section}`;" in SCRIPT
     assert "fetch(path" in SCRIPT and SCRIPT.count("fetch(") == 1
 
 

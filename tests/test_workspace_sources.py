@@ -362,7 +362,8 @@ def test_schema_1_database_is_migrated_without_changing_data(tmp_path):
     )
     conn = sqlite3.connect(db)
     try:
-        assert conn.execute("PRAGMA user_version").fetchone()[0] == ws.SCHEMA_VERSION == 2
+        # Upgraded straight to the current schema (2 added these columns; 3 the graph tables).
+        assert conn.execute("PRAGMA user_version").fetchone()[0] == ws.SCHEMA_VERSION >= 2
     finally:
         conn.close()
 

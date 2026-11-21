@@ -22,7 +22,7 @@ from typing import Any
 from openosint.paths import create_private_file, ensure_private_dir, home_dir
 
 DB_FILENAME = "workspace.db"
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 
 TARGET_KINDS = ("username", "domain", "email", "url", "ip", "phone", "other")
 CONFIDENCE_LEVELS = ("low", "medium", "high")
@@ -48,6 +48,38 @@ SOURCE_TYPES = (
 # Source reliability on the A-F scale used in intelligence source grading. Always assigned
 # by the investigator, with a written rationale; never set or changed by OpenOSINT.
 RELIABILITY_RATINGS = ("unassessed", "A", "B", "C", "D", "E", "F")
+# Entity relationship graph (schema 3). Everything in it is entered by the investigator:
+# nothing creates an entity or asserts a relationship on its own.
+ENTITY_KINDS = (
+    "person",
+    "organization",
+    "username",
+    "domain",
+    "email",
+    "phone",
+    "ip",
+    "location",
+    "custom",
+)
+# A relationship is a documented fact only when the investigator says so and cites a
+# finding or evidence for it; otherwise it is a hypothesis.
+RELATIONSHIP_STATUSES = ("hypothesis", "documented")
+# Suggestions for the relationship label; any other text is accepted.
+RELATIONSHIP_PRESETS = (
+    "owns",
+    "operates",
+    "works for",
+    "member of",
+    "uses",
+    "registered",
+    "hosted on",
+    "linked to",
+    "same as",
+    "communicated with",
+    "located in",
+)
+POSITION_LIMIT = 1_000_000.0
+
 RELIABILITY_LABELS = {
     "unassessed": "Not assessed",
     "A": "Completely reliable",
@@ -143,6 +175,42 @@ CREATE INDEX IF NOT EXISTS idx_sources_inv ON sources(investigation_id);
 CREATE INDEX IF NOT EXISTS idx_findings_inv ON findings(investigation_id);
 CREATE INDEX IF NOT EXISTS idx_notes_inv ON notes(investigation_id);
 CREATE INDEX IF NOT EXISTS idx_evidence_inv ON evidence(investigation_id);
+CREATE TABLE IF NOT EXISTS entities (
+    id TEXT PRIMARY KEY,
+    investigation_id TEXT NOT NULL REFERENCES investigations(id) ON DELETE CASCADE,
+    kind TEXT NOT NULL,
+    label TEXT NOT NULL,
+    description TEXT NOT NULL DEFAULT '',
+    notes TEXT NOT NULL DEFAULT '',
+    target_id TEXT REFERENCES targets(id) ON DELETE SET NULL,
+    pos_x REAL,
+    pos_y REAL,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS relationships (
+    id TEXT PRIMARY KEY,
+    investigation_id TEXT NOT NULL REFERENCES investigations(id) ON DELETE CASCADE,
+    from_entity_id TEXT NOT NULL REFERENCES entities(id) ON DELETE CASCADE,
+    to_entity_id TEXT NOT NULL REFERENCES entities(id) ON DELETE CASCADE,
+    label TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'hypothesis',
+    confidence TEXT NOT NULL DEFAULT 'low',
+    description TEXT NOT NULL DEFAULT '',
+    notes TEXT NOT NULL DEFAULT '',
+    recorded_by TEXT NOT NULL DEFAULT '',
+    finding_id TEXT REFERENCES findings(id) ON DELETE SET NULL,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS relationship_evidence (
+    relationship_id TEXT NOT NULL REFERENCES relationships(id) ON DELETE CASCADE,
+    evidence_id TEXT NOT NULL REFERENCES evidence(id) ON DELETE CASCADE,
+    PRIMARY KEY (relationship_id, evidence_id)
+);
+CREATE INDEX IF NOT EXISTS idx_entities_inv ON entities(investigation_id);
+CREATE INDEX IF NOT EXISTS idx_relationships_inv ON relationships(investigation_id);
+CREATE INDEX IF NOT EXISTS idx_rel_evidence_ev ON relationship_evidence(evidence_id);
 """
 
 # Columns added in schema 2. A schema-1 database gets them with their defaults; every
@@ -160,6 +228,9 @@ _V2_COLUMNS = (
 
 # The sections of an investigation, in display order.
 SECTIONS = ("targets", "sources", "findings", "notes", "evidence")
+# The graph's sections (schema 3). Kept apart so investigation counts stay as they were.
+GRAPH_SECTIONS = ("entities", "relationships")
+ALL_SECTIONS = SECTIONS + GRAPH_SECTIONS
 
 
 class WorkspaceError(Exception):
@@ -401,7 +472,69 @@ class WorkspaceStore:
             )
         ]
         _link_traces(inv)
+        inv["entities"] = [
+            dict(r)
+            for r in q(
+                "SELECT en.*, t.kind AS target_kind, t.value AS target_value, "
+                "(SELECT COUNT(*) FROM relationships r "
+                " WHERE r.from_entity_id = en.id OR r.to_entity_id = en.id) AS relationship_count "
+                "FROM entities en LEFT JOIN targets t ON t.id = en.target_id "
+                "WHERE en.investigation_id = ? ORDER BY en.created_at, en.rowid",
+                (inv_id,),
+            )
+        ]
+        inv["relationships"] = [
+            dict(r)
+            for r in q(
+                "SELECT r.*, a.label AS from_label, a.kind AS from_kind, "
+                "b.label AS to_label, b.kind AS to_kind, f.title AS finding_title, "
+                "f.kind AS finding_kind "
+                "FROM relationships r JOIN entities a ON a.id = r.from_entity_id "
+                "JOIN entities b ON b.id = r.to_entity_id "
+                "LEFT JOIN findings f ON f.id = r.finding_id "
+                "WHERE r.investigation_id = ? ORDER BY r.created_at, r.rowid",
+                (inv_id,),
+            )
+        ]
+        links: dict[str, list[str]] = {}
+        for row in q(
+            "SELECT re.relationship_id, re.evidence_id FROM relationship_evidence re "
+            "JOIN relationships r ON r.id = re.relationship_id WHERE r.investigation_id = ?",
+            (inv_id,),
+        ):
+            links.setdefault(row["relationship_id"], []).append(row["evidence_id"])
+        evidence = {e["id"]: e for e in inv["evidence"]}
+        for rel in inv["relationships"]:
+            ids = [i for i in links.get(rel["id"], []) if i in evidence]
+            ids.sort(key=lambda i: (evidence[i]["collected_on"], evidence[i]["created_at"]))
+            rel["evidence_ids"] = ids
+            # A documented relationship whose cited finding and evidence were all deleted is
+            # flagged, not silently downgraded: the investigator decides what it is now.
+            rel["unsupported"] = rel["status"] == "documented" and not rel["finding_id"] and not ids
+        for e in inv["evidence"]:
+            e["relationship_ids"] = [
+                r["id"] for r in inv["relationships"] if e["id"] in r["evidence_ids"]
+            ]
         return inv
+
+    def trace_relationship(self, inv_id: str, relationship_id: str) -> dict:
+        """A relationship with its two entities, its finding and its evidence (with sources)."""
+        inv = self.get_workspace(inv_id)
+        rel = _find(inv["relationships"], relationship_id, "relationship")
+        entities = {e["id"]: e for e in inv["entities"]}
+        findings = {f["id"]: f for f in inv["findings"]}
+        sources = {s["id"]: s for s in inv["sources"]}
+        evidence = {e["id"]: e for e in inv["evidence"]}
+        return {
+            "relationship": rel,
+            "from_entity": entities[rel["from_entity_id"]],
+            "to_entity": entities[rel["to_entity_id"]],
+            "finding": findings.get(rel["finding_id"]),
+            "evidence": [
+                dict(evidence[i], source=sources.get(evidence[i]["source_id"]))
+                for i in rel["evidence_ids"]
+            ],
+        }
 
     def trace_source(self, inv_id: str, source_id: str) -> dict:
         """What relies on a source: findings citing it, its evidence, findings that evidence supports."""
@@ -453,6 +586,7 @@ class WorkspaceStore:
     def add_item(self, inv_id: str, section: str, data: dict) -> dict:
         self.get_investigation(inv_id)
         values = self._validated(inv_id, section, data, partial=False)
+        evidence_ids = values.pop("_evidence_ids", None)
         item_id, now = uuid.uuid4().hex, _now()
         values.update(id=item_id, investigation_id=inv_id, created_at=now, updated_at=now)
         cols = ", ".join(values)
@@ -464,19 +598,43 @@ class WorkspaceStore:
                 )
             except sqlite3.IntegrityError as exc:
                 raise self._conflict(section) from exc
+            if evidence_ids is not None:
+                self._set_relationship_evidence(item_id, evidence_ids)
             self._touch(inv_id, now)
         return self.get_item(inv_id, section, item_id)
 
     def update_item(self, inv_id: str, section: str, item_id: str, data: dict) -> dict:
         self.get_item(inv_id, section, item_id)
         values = self._validated(inv_id, section, data, partial=True, item_id=item_id)
+        evidence_ids = values.pop("_evidence_ids", None)
         with self._conn:
             try:
                 self._update_row(section, item_id, values)
             except sqlite3.IntegrityError as exc:
                 raise self._conflict(section) from exc
+            if evidence_ids is not None:
+                self._set_relationship_evidence(item_id, evidence_ids)
             self._touch(inv_id, _now())
         return self.get_item(inv_id, section, item_id)
+
+    def set_entity_position(self, inv_id: str, entity_id: str, x: Any, y: Any) -> dict:
+        """Save where an entity sits on the graph. Layout only: no investigation timestamp."""
+        self.get_item(inv_id, "entities", entity_id)
+        pos = (_coordinate(x, "x"), _coordinate(y, "y"))
+        with self._conn:
+            self._conn.execute(
+                "UPDATE entities SET pos_x = ?, pos_y = ? WHERE id = ?", (*pos, entity_id)
+            )
+        return {"id": entity_id, "pos_x": pos[0], "pos_y": pos[1]}
+
+    def _set_relationship_evidence(self, relationship_id: str, evidence_ids: list[str]) -> None:
+        self._conn.execute(
+            "DELETE FROM relationship_evidence WHERE relationship_id = ?", (relationship_id,)
+        )
+        self._conn.executemany(
+            "INSERT INTO relationship_evidence (relationship_id, evidence_id) VALUES (?, ?)",
+            [(relationship_id, e) for e in evidence_ids],
+        )
 
     def delete_item(self, inv_id: str, section: str, item_id: str) -> None:
         self.get_item(inv_id, section, item_id)
@@ -492,7 +650,8 @@ class WorkspaceStore:
             None,
         )
         if item is None:
-            raise NotFound(f"{section[:-1] if section != 'evidence' else 'evidence'} not found")
+            names = {"evidence": "evidence", "entities": "entity"}
+            raise NotFound(f"{names.get(section, section[:-1])} not found")
         return item
 
     # -- helpers -----------------------------------------------------------
@@ -505,7 +664,7 @@ class WorkspaceStore:
 
     @staticmethod
     def _section(section: str) -> str:
-        if section not in SECTIONS:
+        if section not in ALL_SECTIONS:
             raise NotFound("unknown section")
         return section
 
@@ -666,6 +825,115 @@ class WorkspaceStore:
             if has("kind"):
                 out["kind"] = _choice(data.get("kind") or "unspecified", "kind", EVIDENCE_KINDS)
 
+        elif section == "entities":
+            if has("kind"):
+                out["kind"] = _choice(data.get("kind"), "kind", ENTITY_KINDS)
+            if has("target_id"):
+                out["target_id"] = self._ref(inv_id, "targets", data.get("target_id"), "target_id")
+            if has("label"):
+                label = _text(data.get("label"), "label", max_len=TITLE_MAX)
+                if not label and out.get("target_id"):
+                    # An entity made from a target takes the target's value as its name.
+                    label = self._conn.execute(
+                        "SELECT value FROM targets WHERE id = ?", (out["target_id"],)
+                    ).fetchone()["value"][:TITLE_MAX]
+                if not label:
+                    raise InvalidInput("label is required")
+                if "\n" in label or "\r" in label:
+                    raise InvalidInput("label must be on one line")
+                out["label"] = label
+            if has("description"):
+                out["description"] = _text(data.get("description"), "description", max_len=TEXT_MAX)
+            if has("notes"):
+                out["notes"] = _text(data.get("notes"), "notes", max_len=TEXT_MAX)
+            for axis in ("x", "y"):
+                if f"pos_{axis}" in data and data[f"pos_{axis}"] is not None:
+                    out[f"pos_{axis}"] = _coordinate(data[f"pos_{axis}"], axis)
+
+        elif section == "relationships":
+            out.update(self._relationship(inv_id, data, partial=partial, item_id=item_id))
+
+        return out
+
+    def _relationship(self, inv_id: str, data: dict, *, partial: bool, item_id: str) -> dict:
+        """Validate a relationship. A documented one must cite a finding or evidence."""
+        current = (
+            self._conn.execute("SELECT * FROM relationships WHERE id = ?", (item_id,)).fetchone()
+            if partial
+            else None
+        )
+
+        def given(key: str) -> bool:
+            return key in data or not partial
+
+        out: dict[str, Any] = {}
+        ends = {}
+        for key in ("from_entity_id", "to_entity_id"):
+            if given(key):
+                if data.get(key) in (None, ""):
+                    raise InvalidInput(f"{key} is required")
+                ends[key] = self._ref(inv_id, "entities", data.get(key), key)
+                out[key] = ends[key]
+            else:
+                ends[key] = current[key]
+        if ends["from_entity_id"] == ends["to_entity_id"]:
+            raise InvalidInput("a relationship must connect two different entities")
+        if given("label"):
+            label = _text(data.get("label"), "label", max_len=TITLE_MAX, required=True)
+            if "\n" in label or "\r" in label:
+                raise InvalidInput("label must be on one line")
+            out["label"] = label
+        if given("status"):
+            out["status"] = _choice(
+                data.get("status") or "hypothesis", "status", RELATIONSHIP_STATUSES
+            )
+        if given("confidence"):
+            out["confidence"] = _choice(
+                data.get("confidence") or "low", "confidence", CONFIDENCE_LEVELS
+            )
+        for key in ("description", "notes"):
+            if given(key):
+                out[key] = _text(data.get(key), key, max_len=TEXT_MAX)
+        if given("recorded_by"):
+            recorded_by = _text(data.get("recorded_by"), "recorded_by", max_len=TITLE_MAX)
+            if "\n" in recorded_by or "\r" in recorded_by:
+                raise InvalidInput("recorded_by must be on one line")
+            out["recorded_by"] = recorded_by
+        if given("finding_id"):
+            out["finding_id"] = self._ref(inv_id, "findings", data.get("finding_id"), "finding_id")
+        evidence_ids = None
+        if given("evidence_ids"):
+            raw = data.get("evidence_ids") or []
+            if not isinstance(raw, list) or len(raw) > 100:
+                raise InvalidInput("evidence_ids must be a list of at most 100 ids")
+            evidence_ids = list(
+                dict.fromkeys(self._ref(inv_id, "evidence", e, "evidence_ids") for e in raw)
+            )
+            out["_evidence_ids"] = evidence_ids
+
+        status = out.get("status", current["status"] if current is not None else "hypothesis")
+        finding = (
+            out["finding_id"]
+            if "finding_id" in out
+            else (current["finding_id"] if current is not None else None)
+        )
+        if evidence_ids is None:
+            evidence_ids = (
+                [
+                    r["evidence_id"]
+                    for r in self._conn.execute(
+                        "SELECT evidence_id FROM relationship_evidence WHERE relationship_id = ?",
+                        (item_id,),
+                    )
+                ]
+                if current is not None
+                else []
+            )
+        if status == "documented" and not finding and not evidence_ids:
+            raise InvalidInput(
+                "a documented relationship must cite a finding or evidence; "
+                "without one, record it as a hypothesis"
+            )
         return out
 
     @staticmethod
@@ -696,6 +964,15 @@ class WorkspaceStore:
         elif rating != old_rating or rationale != old_rationale or current is None:
             out["reliability_assessed_on"] = _today()
         return out
+
+
+def _coordinate(value: Any, axis: str) -> float:
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise InvalidInput(f"position {axis} must be a number")
+    number = float(value)
+    if number != number or abs(number) > POSITION_LIMIT:  # NaN or out of range
+        raise InvalidInput(f"position {axis} is out of range")
+    return number
 
 
 def _find(items: list[dict], item_id: str, what: str) -> dict:

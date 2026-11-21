@@ -194,6 +194,10 @@
 <td>Every source the findings and evidence rely on, with its type, dates, your reliability rating and what cites it. You can also add a source by hand.</td>
 </tr>
 <tr>
+<td>Graph</td>
+<td>Entities and the relationships between them, drawn as an interactive map (below)</td>
+</tr>
+<tr>
 <td>Notes</td>
 <td>Free-form investigator notes</td>
 </tr>
@@ -295,8 +299,56 @@
 <li>Finding and evidence cards show the cited source's rating next to its link.</li>
 </ul>
 <p>Click any listed item to open it.</p>
+<h2 id="entity-relationship-graph">Entity relationship graph</h2>
+<p>The <strong>Graph</strong> tab is a map you draw yourself. Every entity and relationship is entered by you: nothing is looked up, inferred or created from targets, findings or tool results, and nothing contacts an entity.</p>
+<p><strong>Entities</strong> have a type (person, organization, username, domain, email, phone, IP address, location or custom), a name, and optionally a description, analyst notes and a link to one of the investigation's targets. An entity linked to a target and given no name takes the target's value. Each type has its own colour and shape.</p>
+<p><strong>Relationships</strong> connect two different entities. Each has:</p>
+<div class="table-wrap" tabindex="0" role="region" aria-label="Table"><table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Relationship</td>
+<td>Your own wording, or a suggestion such as "owns", "works for", "registered" or "hosted on"</td>
+</tr>
+<tr>
+<td>Status</td>
+<td><strong>Hypothesis</strong> (the default) or <strong>documented fact</strong>. A documented relationship must cite a finding or at least one evidence entry; without one it is refused.</td>
+</tr>
+<tr>
+<td>Confidence</td>
+<td>Low (the default), medium or high</td>
+</tr>
+<tr>
+<td>Cites finding / evidence</td>
+<td>The finding and evidence entries that support it</td>
+</tr>
+<tr>
+<td>Description, analyst notes</td>
+<td>Free text</td>
+</tr>
+<tr>
+<td>Recorded by</td>
+<td>Optional name or initials of who recorded it</td>
+</tr>
+</tbody>
+</table></div>
+<p>On the graph, documented relationships are solid green lines, hypotheses are dashed, and a thicker line means higher confidence. If every finding and evidence entry a documented relationship cited is deleted, it is drawn as a red dotted line and its details say so: it is not downgraded automatically, so you decide whether to cite new support or mark it a hypothesis.</p>
+<p>Using the graph:</p>
+<ul>
+<li>Drag a node to move it; positions are saved. Scroll or pinch to zoom, and drag the background to pan.</li>
+<li>Click an entity or a relationship to see its details. A relationship shows its cited evidence with each entry's provenance, source and source reliability, and its finding. Click any of them to open it.</li>
+<li>The relationship list under the graph shows every relationship as text, which is easier to use on a phone or with many relationships.</li>
+<li><strong>Fit</strong> shows the whole graph. <strong>Arrange</strong> lays every entity out again and replaces their saved positions; it asks first.</li>
+<li>Deleting an entity deletes its relationships, and asks first, naming how many. Deleting a relationship asks first too. Deleting a finding or evidence entry removes it from the relationships that cited it.</li>
+</ul>
+<p>New entities without a saved position are placed automatically next to the existing ones. Larger graphs hide small labels until you zoom in and simplify drawing while you pan.</p>
 <h2 id="where-the-data-is">Where the data is</h2>
-<p>Everything is in <code>workspace.db</code>, a SQLite file in the data directory (<code>~/.openosint/</code>, or <code>$OPENOSINT_HOME</code>). It persists across restarts. A database from an earlier version is upgraded in place the first time it is opened: new fields are added empty or unassessed, and nothing already saved is changed. An older OpenOSINT cannot open it afterwards. Like the rest of the data directory, a new directory is created owner-only (0700) and the new database file 0600. Nothing is sent anywhere. Back up or move an investigation by copying that file while OpenOSINT is not running.</p>
+<p>Everything is in <code>workspace.db</code>, a SQLite file in the data directory (<code>~/.openosint/</code>, or <code>$OPENOSINT_HOME</code>). It persists across restarts. A database from an earlier version is upgraded in place the first time it is opened: new fields and the graph's tables are added empty or unassessed, and nothing already saved is changed. An older OpenOSINT cannot open it afterwards. Like the rest of the data directory, a new directory is created owner-only (0700) and the new database file 0600. Nothing is sent anywhere. Back up or move an investigation by copying that file while OpenOSINT is not running.</p>
 <h2 id="api">API</h2>
 <p>The page uses these local routes, which you can also call from a script on the same machine:</p>
 <div class="table-wrap" tabindex="0" role="region" aria-label="Table"><table>
@@ -347,6 +399,18 @@
 <td><code>GET /api/investigations/{id}/findings/{item_id}/trace</code></td>
 <td>A finding with its source and its supporting evidence, each with its source</td>
 </tr>
+<tr>
+<td><code>POST</code>, <code>PATCH</code>, <code>DELETE</code> on <code>/api/investigations/{id}/entities[/{item_id}]</code> and <code>…/relationships[/{item_id}]</code></td>
+<td>Graph entities and relationships, like the other tabs. A relationship's evidence is a list: <code>"evidence_ids": [...]</code>.</td>
+</tr>
+<tr>
+<td><code>PUT /api/investigations/{id}/entities/{item_id}/position</code></td>
+<td>Save a node's position: <code>{"x": …, "y": …}</code></td>
+</tr>
+<tr>
+<td><code>GET /api/investigations/{id}/relationships/{item_id}/trace</code></td>
+<td>A relationship with its two entities, its finding and its evidence, each with its source</td>
+</tr>
 </tbody>
 </table></div>
 <p>Invalid input gets a 422 with the reason, an unknown id a 404, and a duplicate target or source URL a 409. Browser requests from another origin are rejected, as for every <code>/api</code> route.</p>
@@ -357,6 +421,10 @@
 <li>Evidence is a description and a link, not a stored copy: attaching files or archived snapshots is not supported yet.</li>
 <li>Reliability is one rating per source. There is no separate rating per claim, and no history of earlier ratings: changing a rating replaces it (the new rationale and date are what you see).</li>
 <li>A source's URL cannot be corrected after it is saved; add the right URL as a new source and move the links.</li>
+<li>The graph has one view per investigation: no filtering, grouping, search or export, and no undo for moved nodes.</li>
+<li>Relationships are directed (from → to); there is no separate undirected kind. Several relationships can join the same two entities.</li>
+<li>"Recorded by" is free text you type: there are no user accounts, so it is not verified.</li>
+<li>Very large graphs (thousands of elements) stay usable but slower; the relationship list then becomes the practical view.</li>
 <li>No export yet. The data is a plain SQLite file you can read with any SQLite tool.</li>
 </ul>
       <nav class="pager" aria-label="Previous and next page"><a class="prev" href="/docs/web-ui/" rel="prev"><small>Previous</small>Web UI</a><a class="next" href="/docs/configuration/" rel="next"><small>Next</small>Configuration</a>
