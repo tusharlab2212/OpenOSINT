@@ -194,6 +194,10 @@
 <td>Every source the findings and evidence rely on, with its type, dates, your reliability rating and what cites it. You can also add a source by hand.</td>
 </tr>
 <tr>
+<td>Timeline</td>
+<td>Dated events and the correlations you draw between them (below)</td>
+</tr>
+<tr>
 <td>Graph</td>
 <td>Entities and the relationships between them, drawn as an interactive map (below)</td>
 </tr>
@@ -299,6 +303,53 @@
 <li>Finding and evidence cards show the cited source's rating next to its link.</li>
 </ul>
 <p>Click any listed item to open it.</p>
+<h2 id="timeline-and-correlation">Timeline and correlation</h2>
+<p>The <strong>Timeline</strong> tab lists the investigation's events in date order. Like the rest of the workspace it holds only what you enter: nothing dates, links, verifies or correlates events for you, and nothing contacts a target.</p>
+<p><strong>Events</strong> have a title, an optional description and investigator notes, a category (communication, registration, publication, account activity, infrastructure change, transaction, meeting, travel, legal or other) and a provenance:</p>
+<div class="table-wrap" tabindex="0" role="region" aria-label="Table"><table>
+<thead>
+<tr>
+<th>Provenance</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Source-reported</td>
+<td>A source says it happened</td>
+</tr>
+<tr>
+<td>Analyst observation</td>
+<td>You saw it in a source yourself</td>
+</tr>
+<tr>
+<td>Hypothesis (the default)</td>
+<td>You think it may have happened</td>
+</tr>
+<tr>
+<td>Analyst conclusion</td>
+<td>You infer it from other events or findings</td>
+</tr>
+</tbody>
+</table></div>
+<p>There is no "verified" provenance, and a new event is a hypothesis until you say otherwise.</p>
+<p><strong>Dates</strong> are one of three kinds, shown differently in the list:</p>
+<ul>
+<li><strong>Exact</strong>: a date (<code>YYYY-MM-DD</code>), optionally with a time (<code>HH:MM</code>).</li>
+<li><strong>Approximate</strong>, shown with <code>≈</code>: a year (<code>2026</code>), a month (<code>2026-03</code>) or a day.</li>
+<li><strong>Range</strong>, shown as <code>start → end</code>: a start and an end date, each optionally with a time.</li>
+</ul>
+<p>A time can have a time zone: an IANA name such as <code>Europe/London</code>, <code>UTC</code>, or an offset such as <code>+05:30</code>. Dates and times are kept exactly as you entered them.</p>
+<p>Events can be <strong>linked</strong> to the investigation's targets, entities, findings, evidence and sources. Deleting a linked item removes the link and keeps the event.</p>
+<p>Using the timeline:</p>
+<ul>
+<li>Sort oldest or newest first. Filter by category, provenance, linked entity, date range, events that cite evidence, or text.</li>
+<li>Click an event to see its details, links and correlations; edit or delete it there. Deleting asks first and says which correlations lose it.</li>
+<li>Long timelines show 100 events at a time, grouped by month, with <strong>Show more</strong>.</li>
+</ul>
+<p><strong>Correlations</strong> group two or more events you think may be connected. Tick events and choose <strong>Compare selected</strong> to see them side by side, in order, with the time between them; <strong>Group as correlation</strong> records the grouping. A correlation has a title, your explanation, a confidence level (low by default), notes, an optional "recorded by", and optionally a cited finding and evidence. It is an <strong>analyst hypothesis</strong> unless you mark it documented, which needs a cited finding or evidence entry. The time between events is plain arithmetic: it is shown as approximate when a date is approximate or only one of the times has a time zone, and it is never a claim that one event caused another. If a correlation loses its citations or falls below two events because something was deleted, it is flagged, not changed.</p>
+<h3 id="how-events-are-ordered">How events are ordered</h3>
+<p>An event with a time and a time zone is ordered by that moment in UTC. An event without a time zone is ordered by its date and time as written, and an approximate date by the start of its year or month. A timeline that mixes events with and without time zones can therefore be out of order by up to the time-zone difference on the same day; give times a zone when the order matters.</p>
 <h2 id="entity-relationship-graph">Entity relationship graph</h2>
 <p>The <strong>Graph</strong> tab is a map you draw yourself. Every entity and relationship is entered by you: nothing is looked up, inferred or created from targets, findings or tool results, and nothing contacts an entity.</p>
 <p><strong>Entities</strong> have a type (person, organization, username, domain, email, phone, IP address, location or custom), a name, and optionally a description, analyst notes and a link to one of the investigation's targets. An entity linked to a target and given no name takes the target's value. Each type has its own colour and shape.</p>
@@ -348,7 +399,7 @@
 </ul>
 <p>New entities without a saved position are placed automatically next to the existing ones. Larger graphs hide small labels until you zoom in and simplify drawing while you pan.</p>
 <h2 id="where-the-data-is">Where the data is</h2>
-<p>Everything is in <code>workspace.db</code>, a SQLite file in the data directory (<code>~/.openosint/</code>, or <code>$OPENOSINT_HOME</code>). It persists across restarts. A database from an earlier version is upgraded in place the first time it is opened: new fields and the graph's tables are added empty or unassessed, and nothing already saved is changed. An older OpenOSINT cannot open it afterwards. Like the rest of the data directory, a new directory is created owner-only (0700) and the new database file 0600. Nothing is sent anywhere. Back up or move an investigation by copying that file while OpenOSINT is not running.</p>
+<p>Everything is in <code>workspace.db</code>, a SQLite file in the data directory (<code>~/.openosint/</code>, or <code>$OPENOSINT_HOME</code>). It persists across restarts. A database from an earlier version is upgraded in place the first time it is opened: new fields and the graph and timeline tables are added empty or unassessed, and nothing already saved is changed. An older OpenOSINT cannot open it afterwards. Like the rest of the data directory, a new directory is created owner-only (0700) and the new database file 0600. Nothing is sent anywhere. Back up or move an investigation by copying that file while OpenOSINT is not running.</p>
 <h2 id="api">API</h2>
 <p>The page uses these local routes, which you can also call from a script on the same machine:</p>
 <div class="table-wrap" tabindex="0" role="region" aria-label="Table"><table>
@@ -408,6 +459,10 @@
 <td>Save a node's position: <code>{"x": …, "y": …}</code></td>
 </tr>
 <tr>
+<td><code>POST</code>, <code>PATCH</code>, <code>DELETE</code> on <code>/api/investigations/{id}/events[/{item_id}]</code> and <code>…/correlations[/{item_id}]</code></td>
+<td>Timeline events (links as <code>"links": [{"kind": "evidence", "id": …}]</code>) and correlations (<code>"event_ids"</code>, <code>"evidence_ids"</code>)</td>
+</tr>
+<tr>
 <td><code>GET /api/investigations/{id}/relationships/{item_id}/trace</code></td>
 <td>A relationship with its two entities, its finding and its evidence, each with its source</td>
 </tr>
@@ -424,6 +479,9 @@
 <li>The graph has one view per investigation: no filtering, grouping, search or export, and no undo for moved nodes.</li>
 <li>Relationships are directed (from → to); there is no separate undirected kind. Several relationships can join the same two entities.</li>
 <li>"Recorded by" is free text you type: there are no user accounts, so it is not verified.</li>
+<li>The timeline is a list, not a scaled chart: distance on screen does not show time. Events are grouped by the month of their start date.</li>
+<li>Recurring events, uncertainty margins ("± 3 days") and time zones on approximate dates are not supported; use the notes.</li>
+<li>The date filters compare with each event's sort key (UTC when a time zone is given), so an event late in the day in a time zone west of UTC can fall on the next day for filtering.</li>
 <li>Very large graphs (thousands of elements) stay usable but slower; the relationship list then becomes the practical view.</li>
 <li>No export yet. The data is a plain SQLite file you can read with any SQLite tool.</li>
 </ul>

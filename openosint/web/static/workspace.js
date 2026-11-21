@@ -14,6 +14,12 @@ import {
   graphElements, graphStyle, performanceOptions, relationshipsOf, unplacedIds,
   validateRelationship, withDistinctPositions,
 } from '/static/workspace-graph.js';
+import {
+  COMMON_TIMEZONES, CORRELATION_STATUS_LABELS, DATE_PRECISION_LABELS, DATE_PRECISIONS,
+  EVENT_CATEGORIES, EVENT_PROVENANCE, EVENT_PROVENANCE_LABELS, LINK_KINDS, LINK_LABELS, PAGE_SIZE,
+  categoryLabel, eventFormValues, eventPayload, filterEvents, formatEventDate, groupByMonth,
+  sortEvents, timeBetween, validateCorrelation, validateEvent,
+} from '/static/workspace-timeline.js';
 
 export const TARGET_KINDS = ['username', 'domain', 'email', 'url', 'ip', 'phone', 'other'];
 export const CONFIDENCE_LEVELS = ['low', 'medium', 'high'];
@@ -63,6 +69,7 @@ export const TABS = [
   { id: 'findings', label: 'Findings' },
   { id: 'evidence', label: 'Evidence' },
   { id: 'sources', label: 'Sources' },
+  { id: 'timeline', label: 'Timeline', count: 'events' },
   { id: 'graph', label: 'Graph', count: 'entities' },
   { id: 'notes', label: 'Notes' },
 ];
@@ -122,6 +129,41 @@ export const FIELDS = {
     { name: 'description', label: 'Description', type: 'textarea' },
     { name: 'notes', label: 'Analyst notes', type: 'textarea' },
   ],
+  events: [
+    { name: 'title', label: 'Title', type: 'text', required: true, max: 200 },
+    { name: 'category', label: 'Category', type: 'select',
+      options: EVENT_CATEGORIES.map((c) => [c, categoryLabel(c)]) },
+    { name: 'provenance', label: 'Provenance', type: 'select', required: true,
+      options: EVENT_PROVENANCE.map((k) => [k, EVENT_PROVENANCE_LABELS[k]]) },
+    { name: 'date_precision', label: 'Date type', type: 'select', required: true,
+      options: DATE_PRECISIONS.map((k) => [k, DATE_PRECISION_LABELS[k]]) },
+    { name: 'start_date', label: 'Date (or start)', type: 'text', required: true, max: 10,
+      placeholder: 'YYYY-MM-DD (approximate: YYYY or YYYY-MM)' },
+    { name: 'start_time', label: 'Time (optional)', type: 'time' },
+    { name: 'end_date', label: 'End date (ranges only)', type: 'date' },
+    { name: 'end_time', label: 'End time (optional)', type: 'time' },
+    { name: 'timezone', label: 'Time zone (optional)', type: 'text', max: 64,
+      placeholder: 'e.g. Europe/London, UTC, +05:30', suggestList: 'ws-timezones' },
+    { name: 'description', label: 'Description', type: 'textarea' },
+    ...LINK_KINDS.map((kind) => ({
+      name: `link_${kind}`, label: `Linked ${LINK_LABELS[kind].toLowerCase()}`, type: 'multiref',
+      ref: { target: 'targets', entity: 'entities', finding: 'findings', evidence: 'evidence', source: 'sources' }[kind],
+    })),
+    { name: 'notes', label: 'Investigator notes', type: 'textarea' },
+  ],
+  correlations: [
+    { name: 'title', label: 'Title', type: 'text', required: true, max: 200 },
+    { name: 'status', label: 'Status', type: 'select', required: true,
+      options: ['hypothesis', 'documented'].map((s) => [s, CORRELATION_STATUS_LABELS[s]]) },
+    { name: 'confidence', label: 'Confidence', type: 'select', options: CONFIDENCE_LEVELS,
+      required: true },
+    { name: 'event_ids', label: 'Events (two or more)', type: 'multiref', ref: 'events' },
+    { name: 'explanation', label: 'Why these events may be connected', type: 'textarea' },
+    { name: 'finding_id', label: 'Cites finding', type: 'ref', ref: 'findings' },
+    { name: 'evidence_ids', label: 'Cites evidence', type: 'multiref', ref: 'evidence' },
+    { name: 'notes', label: 'Analyst notes', type: 'textarea' },
+    { name: 'recorded_by', label: 'Recorded by (optional)', type: 'text', max: 200 },
+  ],
   relationships: [
     { name: 'from_entity_id', label: 'From', type: 'ref', ref: 'entities', required: true },
     { name: 'label', label: 'Relationship', type: 'text', required: true, max: 200,
@@ -150,6 +192,13 @@ export function defaultsFor(section, today = todayIso()) {
   // A relationship is a hypothesis until you document it.
   if (section === 'relationships') return { status: 'hypothesis', confidence: 'low', evidence_ids: [] };
   if (section === 'entities') return { kind: 'person' };
+  // An event is a hypothesis until you say where it comes from; nothing marks it verified.
+  if (section === 'events') {
+    return { category: 'other', provenance: 'hypothesis', date_precision: 'exact', start_date: today };
+  }
+  if (section === 'correlations') {
+    return { status: 'hypothesis', confidence: 'low', event_ids: [], evidence_ids: [] };
+  }
   if (section === 'targets') return { kind: 'domain' };
   return {};
 }
@@ -188,6 +237,14 @@ export function validateForm(section, values) {
   }
   if (section === 'relationships') {
     const problem = validateRelationship(values);
+    if (problem) return problem;
+  }
+  if (section === 'events') {
+    const problem = validateEvent(values);
+    if (problem) return problem;
+  }
+  if (section === 'correlations') {
+    const problem = validateCorrelation(values);
     if (problem) return problem;
   }
   if (section === 'sources') {
@@ -335,6 +392,7 @@ export function init(root = document) {
     const data = await guard(() => api('GET', `/api/investigations/${encodeURIComponent(id)}`));
     if (!data) return;
     if (!state.current || state.current.id !== data.id) {
+      Object.assign(timeline, { filters: {}, shown: PAGE_SIZE, selected: null, form: null, compare: new Set() });
       graphView.viewport = null;
       graphView.selected = null;
       graphView.form = null;
@@ -419,6 +477,10 @@ export function init(root = document) {
     if (ref === 'evidence') {
       return items.map((e) => [e.id, `${e.collected_on} — ${e.description.slice(0, 70)}`]);
     }
+    if (ref === 'events') {
+      return sortEvents(items).map((e) => [e.id, `${formatEventDate(e)} — ${e.title}`]);
+    }
+    if (ref === 'sources') return items.map((s) => [s.id, s.title || s.url]);
     return [];
   }
 
@@ -457,6 +519,7 @@ export function init(root = document) {
           input.setAttribute('list', 'ws-source-urls');
         }
         if (field.suggest) input.setAttribute('list', 'ws-relationship-presets');
+        if (field.suggestList) input.setAttribute('list', field.suggestList);
       }
       input.name = field.name;
       if (field.type !== 'multiref') input.value = values[field.name] ?? '';
@@ -560,6 +623,8 @@ export function init(root = document) {
     for (const s of inv.sources) datalist.append(el('option', { value: s.url }));
     const presets = el('datalist', { id: 'ws-relationship-presets' });
     for (const label of RELATIONSHIP_PRESETS) presets.append(el('option', { value: label }));
+    const zones = el('datalist', { id: 'ws-timezones' });
+    for (const zone of COMMON_TIMEZONES) zones.append(el('option', { value: zone }));
     if (graphView.cy) {
       graphView.viewport = { zoom: graphView.cy.zoom(), pan: graphView.cy.pan() };
       graphView.cy.destroy();
@@ -568,6 +633,7 @@ export function init(root = document) {
     pane.append(
       datalist,
       presets,
+      zones,
       el(
         'div',
         { class: 'ws-head' },
@@ -600,7 +666,7 @@ export function init(root = document) {
           );
         }),
       ),
-      el('section', { class: `tab-body${state.tab === 'graph' ? ' wide' : ''}` }, renderTab(inv)),
+      el('section', { class: `tab-body${['graph', 'timeline'].includes(state.tab) ? ' wide' : ''}` }, renderTab(inv)),
     );
     if (state.tab === 'graph') mountGraph(inv);
   }
@@ -635,6 +701,8 @@ export function init(root = document) {
           'OpenOSINT never sets it.');
       case 'graph':
         return renderGraphTab(inv);
+      case 'timeline':
+        return renderTimelineTab(inv);
       case 'notes':
         return renderSection('notes', 'note', inv.notes, (n) => [
           el('p', { class: 'pre', text: n.body }),
@@ -672,6 +740,336 @@ export function init(root = document) {
       text: label || '(untitled)',
       onclick: () => focusItem(section, id),
     });
+  }
+
+  // -- timeline ---------------------------------------------------------------------
+
+  const timeline = {
+    sort: 'asc', filters: {}, shown: PAGE_SIZE, selected: null, form: null, compare: new Set(),
+  };
+
+  function timelineBase() {
+    return `/api/investigations/${state.current.id}`;
+  }
+
+  function rerenderTimeline() {
+    const scroll = root.getElementById('ws-main')?.scrollTop || 0;
+    render();
+    const main = root.getElementById('ws-main');
+    if (main) main.scrollTop = scroll;
+  }
+
+  function provenanceTag(kind) {
+    return el('span', { class: `prov ${kind === 'reported' ? 'reported' : kind === 'observation' ? 'observation' : kind}`,
+      text: EVENT_PROVENANCE_LABELS[kind] || kind });
+  }
+
+  function renderTimelineTab(inv) {
+    const f = timeline.filters;
+    const visible = sortEvents(filterEvents(inv.events, f), timeline.sort);
+    const setFilter = (key, value) => {
+      timeline.filters = { ...timeline.filters, [key]: value };
+      timeline.shown = PAGE_SIZE;
+      rerenderTimeline();
+    };
+    const select = (key, label, options) => el('label', { class: 'filter' }, el('span', { text: label }),
+      (() => {
+        const s = el('select', { dataset: { filter: key }, onchange: (e) => setFilter(key, e.target.value) },
+          el('option', { value: '', text: 'All' }),
+          options.map(([v, l]) => el('option', { value: v, text: l })));
+        s.value = f[key] || '';
+        return s;
+      })());
+    const dateInput = (key, label) => {
+      const input = el('input', { type: 'date', dataset: { filter: key }, onchange: (e) => setFilter(key, e.target.value) });
+      input.value = f[key] || '';
+      return el('label', { class: 'filter' }, el('span', { text: label }), input);
+    };
+    const search = el('input', { type: 'search', placeholder: 'Search text', dataset: { filter: 'text' },
+      onchange: (e) => setFilter('text', e.target.value) });
+    search.value = f.text || '';
+    const evidenceOnly = el('input', { type: 'checkbox', dataset: { filter: 'evidenceOnly' },
+      onchange: (e) => setFilter('evidenceOnly', e.target.checked) });
+    evidenceOnly.checked = !!f.evidenceOnly;
+    const filtered = Object.values(f).some(Boolean);
+
+    const toolbar = el('div', { class: 'graph-toolbar' },
+      el('button', { class: 'primary', dataset: { testid: 'add-event' }, text: '+ Event',
+        onclick: () => openTimelineForm('events', null) }),
+      el('button', { dataset: { testid: 'add-correlation' }, text: '+ Correlation',
+        disabled: inv.events.length < 2, title: inv.events.length < 2 ? 'Add at least two events first' : '',
+        onclick: () => openTimelineForm('correlations', null) }),
+      el('button', { dataset: { testid: 'sort-toggle' },
+        text: timeline.sort === 'asc' ? 'Oldest first ↓' : 'Newest first ↑',
+        onclick: () => { timeline.sort = timeline.sort === 'asc' ? 'desc' : 'asc'; rerenderTimeline(); } }),
+      el('button', { dataset: { testid: 'compare' }, text: `Compare selected (${timeline.compare.size})`,
+        disabled: timeline.compare.size < 2,
+        onclick: () => { timeline.form = null; timeline.selected = { type: 'compare' }; renderTimelineDetail(); } }));
+    const filters = el('div', { class: 'filters', dataset: { testid: 'timeline-filters' } },
+      select('category', 'Category', EVENT_CATEGORIES.map((c) => [c, categoryLabel(c)])),
+      select('provenance', 'Provenance', EVENT_PROVENANCE.map((k) => [k, EVENT_PROVENANCE_LABELS[k]])),
+      select('entityId', 'Entity', inv.entities.map((e) => [e.id, e.label])),
+      dateInput('from', 'From'),
+      dateInput('to', 'To'),
+      el('label', { class: 'filter check' }, evidenceOnly, el('span', { text: 'Cites evidence' })),
+      el('label', { class: 'filter' }, el('span', { text: 'Text' }), search),
+      filtered ? el('button', { text: 'Clear filters', onclick: () => { timeline.filters = {}; rerenderTimeline(); } }) : null);
+
+    const list = el('div', { class: 'timeline-list', dataset: { testid: 'timeline-list' } });
+    if (!inv.events.length) {
+      list.append(el('p', { class: 'muted', text:
+        'No events yet. Add what happened and when, as each source reports it or as you observed it.' }));
+    } else {
+      list.append(el('p', { class: 'muted small', dataset: { testid: 'timeline-count' },
+        text: `${visible.length} of ${inv.events.length} events${filtered ? ' (filtered)' : ''}` }));
+      for (const group of groupByMonth(visible.slice(0, timeline.shown))) {
+        list.append(el('h4', { class: 'month', text: group.label }));
+        for (const ev of group.events) list.append(eventRow(ev));
+      }
+      if (visible.length > timeline.shown) {
+        list.append(el('button', { dataset: { testid: 'show-more' },
+          text: `Show ${Math.min(PAGE_SIZE, visible.length - timeline.shown)} more (${visible.length - timeline.shown} not shown)`,
+          onclick: () => { timeline.shown += PAGE_SIZE; rerenderTimeline(); } }));
+      }
+    }
+    return el('div', { class: 'timeline-tab' },
+      el('p', { class: 'muted small', text:
+        'A timeline you build yourself: events are dated, linked and grouped only by you, and none is ' +
+        'treated as verified. Correlations are analyst hypotheses unless you document them with a ' +
+        'finding or evidence; the time between events is arithmetic, not evidence of a connection.' }),
+      toolbar, filters,
+      el('div', { class: 'graph-layout' }, list,
+        el('aside', { id: 'ws-timeline-detail', class: 'graph-detail', dataset: { testid: 'timeline-detail' } },
+          ...timelineDetail(inv))),
+      renderCorrelationList(inv));
+  }
+
+  function eventRow(ev) {
+    const box = el('input', { type: 'checkbox', title: 'Select to compare', dataset: { compare: ev.id },
+      onchange: (e) => {
+        if (e.target.checked) timeline.compare.add(ev.id);
+        else timeline.compare.delete(ev.id);
+        const button = root.querySelector('[data-testid="compare"]');
+        if (button) {
+          button.textContent = `Compare selected (${timeline.compare.size})`;
+          button.disabled = timeline.compare.size < 2;
+        }
+      } });
+    box.checked = timeline.compare.has(ev.id);
+    const selected = timeline.selected?.type === 'event' && timeline.selected.id === ev.id;
+    return el('div', { class: `event-row${selected ? ' selected' : ''}`, dataset: { testid: 'event-row', id: ev.id } },
+      box,
+      el('button', { class: 'event-main', onclick: () => selectTimeline('event', ev.id) },
+        el('span', { class: `event-date ${ev.date_precision}`, text: formatEventDate(ev) }),
+        el('span', { class: 'event-title', text: ev.title }),
+        el('span', { class: 'event-tags' }, el('span', { class: 'chip', text: categoryLabel(ev.category) }), ' ',
+          provenanceTag(ev.provenance),
+          ev.links.length ? el('span', { class: 'muted small', text: ` · ${ev.links.length} link(s)` }) : null)));
+  }
+
+  function renderCorrelationList(inv) {
+    const wrap = el('div', { class: 'rel-table', dataset: { testid: 'correlation-list' } },
+      el('h3', { text: `Correlations (${inv.correlations.length})` }));
+    if (!inv.correlations.length) {
+      wrap.append(el('p', { class: 'muted', text: 'None yet. Select events and compare them, then group them if you think they are connected.' }));
+      return wrap;
+    }
+    wrap.append(el('ul', {}, inv.correlations.map((c) => el('li', {},
+      el('button', { class: 'linkish', dataset: { testid: 'correlation-row', id: c.id },
+        onclick: () => selectTimeline('correlation', c.id) }, c.title),
+      ' ', correlationBadge(c), ' ',
+      el('span', { class: 'muted small', text: `${c.event_ids.length} events · ${c.confidence} confidence` })))));
+    return wrap;
+  }
+
+  function correlationBadge(c) {
+    if (c.unsupported) return el('span', { class: 'status unsupported', text: 'documented — no citation left' });
+    return el('span', { class: `status ${c.status}`, text: c.status === 'documented' ? 'documented' : 'hypothesis' });
+  }
+
+  function selectTimeline(type, id) {
+    timeline.selected = { type, id };
+    timeline.form = null;
+    rerenderTimeline();
+    root.getElementById('ws-timeline-detail')?.scrollIntoView({ block: 'nearest' });
+  }
+
+  function openTimelineForm(section, item, preset = null) {
+    timeline.form = { section, item, preset };
+    renderTimelineDetail();
+    root.getElementById('ws-timeline-detail')?.scrollIntoView({ block: 'nearest' });
+  }
+
+  function renderTimelineDetail() {
+    const panel = root.getElementById('ws-timeline-detail');
+    if (!panel || !state.current) return;
+    panel.replaceChildren(...timelineDetail(state.current).filter(Boolean));
+  }
+
+  function timelineDetail(inv) {
+    if (timeline.form) {
+      const { section, item, preset } = timeline.form;
+      const what = section === 'events' ? 'event' : 'correlation';
+      return [el('h3', { text: `${item ? 'Edit' : 'Add'} ${what}` }), timelineForm(section, item, preset)];
+    }
+    const sel = timeline.selected;
+    const events = new Map(inv.events.map((e) => [e.id, e]));
+    if (sel?.type === 'event' && events.has(sel.id)) return eventDetail(inv, events.get(sel.id));
+    if (sel?.type === 'correlation') {
+      const c = inv.correlations.find((x) => x.id === sel.id);
+      if (c) return correlationDetail(inv, c);
+    }
+    if (sel?.type === 'compare') {
+      const chosen = sortEvents([...timeline.compare].map((id) => events.get(id)).filter(Boolean));
+      if (chosen.length >= 2) return compareView(chosen);
+    }
+    return [el('p', { class: 'muted', text: 'Select an event or a correlation to see its details, or tick events and compare them.' })];
+  }
+
+  function linkJump(link) {
+    if (link.kind === 'entity') {
+      return el('button', { class: 'linkish', text: link.label, onclick: () => {
+        state.tab = 'graph';
+        graphView.selected = { type: 'entity', id: link.id };
+        render();
+      } });
+    }
+    const section = { target: 'targets', finding: 'findings', evidence: 'evidence', source: 'sources' }[link.kind];
+    return jump(section, link.id, link.label);
+  }
+
+  function eventDetail(inv, ev) {
+    const groups = LINK_KINDS.map((kind) => [kind, ev.links.filter((l) => l.kind === kind)]).filter(([, l]) => l.length);
+    const corrs = inv.correlations.filter((c) => ev.correlation_ids.includes(c.id));
+    return [
+      el('div', { class: 'detail-kind', dataset: { testid: 'event-detail' } },
+        provenanceTag(ev.provenance), ' ', el('span', { class: 'chip', text: categoryLabel(ev.category) })),
+      el('h3', { class: 'detail-title', text: ev.title }),
+      meta([
+        ['When', formatEventDate(ev)],
+        ['Date type', DATE_PRECISION_LABELS[ev.date_precision]],
+        ['Time zone', ev.start_time ? (ev.timezone || 'not specified') : ''],
+        ['Created', formatTimestamp(ev.created_at)],
+        ['Updated', formatTimestamp(ev.updated_at)],
+      ]),
+      ev.description ? el('p', { class: 'pre', text: ev.description }) : null,
+      ...groups.map(([kind, links]) => el('div', { class: 'trace' },
+        el('div', { class: 'trace-title', text: `${LINK_LABELS[kind]} (${links.length})` }),
+        el('ul', {}, links.map((l) => el('li', {}, linkJump(l)))))),
+      corrs.length ? el('div', { class: 'trace' }, el('div', { class: 'trace-title', text: `In correlations (${corrs.length})` }),
+        el('ul', {}, corrs.map((c) => el('li', {}, el('button', { class: 'linkish', text: c.title,
+          onclick: () => selectTimeline('correlation', c.id) }), ' ', correlationBadge(c))))) : null,
+      ev.notes ? el('p', { class: 'pre muted' }, el('em', { text: 'Notes: ' }), ev.notes) : null,
+      el('div', { class: 'actions' },
+        el('button', { text: 'Edit', onclick: () => openTimelineForm('events', ev) }),
+        el('button', { class: 'danger', dataset: { testid: 'delete-event' }, text: 'Delete',
+          onclick: () => deleteTimelineItem('events', ev, corrs.length) })),
+    ];
+  }
+
+  function chronologyList(chosen) {
+    return el('ol', { class: 'chronology' }, chosen.map((ev, i) => el('li', {},
+      i ? el('div', { class: 'gap muted small', text: timeBetween(chosen[i - 1], ev) }) : null,
+      el('button', { class: 'linkish', text: `${formatEventDate(ev)} — ${ev.title}`,
+        onclick: () => selectTimeline('event', ev.id) }), ' ', provenanceTag(ev.provenance))));
+  }
+
+  function correlationDetail(inv, c) {
+    const events = new Map(inv.events.map((e) => [e.id, e]));
+    const chosen = c.event_ids.map((id) => events.get(id)).filter(Boolean);
+    const evidence = new Map(inv.evidence.map((e) => [e.id, e]));
+    const cited = c.evidence_ids.map((id) => evidence.get(id)).filter(Boolean);
+    return [
+      el('div', { class: 'detail-kind', dataset: { testid: 'correlation-detail' } }, correlationBadge(c), ' ',
+        el('span', { class: `conf ${c.confidence}`, text: `${c.confidence} confidence` })),
+      el('h3', { class: 'detail-title', text: c.title }),
+      c.status !== 'documented'
+        ? el('p', { class: 'muted small', text: 'Analyst hypothesis: a possible connection, not an established one.' })
+        : null,
+      c.unsupported ? el('p', { class: 'form-error', text: 'Marked documented, but the finding and evidence it cited were deleted.' }) : null,
+      c.incomplete ? el('p', { class: 'form-error', text: 'Fewer than two of its events remain.' }) : null,
+      c.explanation ? el('p', { class: 'pre', text: c.explanation }) : null,
+      el('div', { class: 'trace' }, el('div', { class: 'trace-title', text: `Events, in order (${chosen.length})` }),
+        chronologyList(chosen)),
+      meta([
+        ['Status', CORRELATION_STATUS_LABELS[c.status]],
+        ['Cites finding', c.finding_id ? jump('findings', c.finding_id, c.finding_title) : ''],
+        ['Recorded by', c.recorded_by],
+        ['Created', formatTimestamp(c.created_at)],
+      ]),
+      cited.length ? el('div', { class: 'trace' }, el('div', { class: 'trace-title', text: `Cited evidence (${cited.length})` }),
+        el('ul', {}, cited.map((e) => el('li', {}, provenanceBadge(e.kind), ' ', jump('evidence', e.id, e.description.slice(0, 80)),
+          e.source_url ? [' — ', sourceRef(e.source_url, e.source_reliability)] : ''))))
+        : null,
+      c.notes ? el('p', { class: 'pre muted' }, el('em', { text: 'Notes: ' }), c.notes) : null,
+      el('div', { class: 'actions' },
+        el('button', { text: 'Edit', onclick: () => openTimelineForm('correlations', c) }),
+        el('button', { class: 'danger', dataset: { testid: 'delete-correlation' }, text: 'Delete',
+          onclick: () => deleteTimelineItem('correlations', c, 0) })),
+    ];
+  }
+
+  function compareView(chosen) {
+    const rows = [
+      ['When', (ev) => formatEventDate(ev)],
+      ['Category', (ev) => categoryLabel(ev.category)],
+      ['Provenance', (ev) => EVENT_PROVENANCE_LABELS[ev.provenance]],
+      ['Links', (ev) => ev.links.map((l) => `${l.kind}: ${l.label}`).join('; ') || '—'],
+    ];
+    return [
+      el('h3', { dataset: { testid: 'compare-view' }, text: `Comparing ${chosen.length} events` }),
+      chronologyList(chosen),
+      el('div', { class: 'compare-wrap' }, el('table', { class: 'compare' },
+        el('thead', {}, el('tr', {}, el('th', {}), chosen.map((ev) => el('th', { text: ev.title })))),
+        el('tbody', {}, rows.map(([label, fn]) => el('tr', {}, el('th', { text: label }),
+          chosen.map((ev) => el('td', { text: fn(ev) }))))))),
+      el('p', { class: 'muted small', text: 'Shown side by side only. Grouping them records your own hypothesis that they may be connected.' }),
+      el('div', { class: 'actions' },
+        el('button', { class: 'primary', dataset: { testid: 'group-as-correlation' }, text: 'Group as correlation',
+          onclick: () => openTimelineForm('correlations', null, { event_ids: chosen.map((e) => e.id) }) })),
+    ];
+  }
+
+  function timelineForm(section, item, preset) {
+    const editing = !!item;
+    let values = editing ? (section === 'events' ? eventFormValues(item) : { ...item }) : { ...defaultsFor(section), ...(preset || {}) };
+    if (!editing && section === 'events') values = eventFormValues(values);
+    return buildForm(FIELDS[section], values, {
+      editing,
+      submitLabel: editing ? 'Save' : 'Add',
+      testid: `${section}-${editing ? 'edit' : 'add'}-form`,
+      onCancel: () => { timeline.form = null; renderTimelineDetail(); },
+      onSubmit: async (formValues) => {
+        const problem = validateForm(section, formValues);
+        if (problem) return problem;
+        const body = section === 'events'
+          ? eventPayload(formValues, { editing })
+          : payloadFromForm(section, formValues, { editing });
+        const base = `${timelineBase()}/${section}`;
+        const saved = await guard(() =>
+          editing ? api('PATCH', `${base}/${item.id}`, body) : api('POST', base, body),
+        );
+        if (!saved) return state.error;
+        timeline.form = null;
+        timeline.selected = { type: section === 'events' ? 'event' : 'correlation', id: saved.id };
+        if (section === 'correlations') timeline.compare.clear();
+        await refresh();
+        return '';
+      },
+    });
+  }
+
+  async function deleteTimelineItem(section, item, corrCount) {
+    const message = section === 'events'
+      ? `Delete the event "${item.title}"?${corrCount ? ` It is part of ${corrCount} correlation(s), which will lose it.` : ''} This cannot be undone.`
+      : `Delete the correlation "${item.title}"? Its events are kept. This cannot be undone.`;
+    if (!window.confirm(message)) return;
+    const ok = await guard(() => api('DELETE', `${timelineBase()}/${section}/${item.id}`));
+    if (!ok) return;
+    timeline.selected = null;
+    timeline.form = null;
+    timeline.compare.delete(item.id);
+    await refresh();
   }
 
   // -- entity relationship graph -------------------------------------------------

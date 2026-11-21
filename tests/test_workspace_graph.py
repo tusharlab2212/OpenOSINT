@@ -316,7 +316,8 @@ def test_schema_2_database_gains_the_graph_tables_without_data_changes(tmp_path)
         _entity(s, inv, "New")
     conn = sqlite3.connect(db)
     try:
-        assert conn.execute("PRAGMA user_version").fetchone()[0] == ws.SCHEMA_VERSION == 3
+        # Upgraded straight to the current schema (3 added the graph tables).
+        assert conn.execute("PRAGMA user_version").fetchone()[0] == ws.SCHEMA_VERSION >= 3
     finally:
         conn.close()
 

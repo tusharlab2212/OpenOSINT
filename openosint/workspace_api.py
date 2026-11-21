@@ -112,6 +112,38 @@ class RelationshipBody(_Body):
     evidence_ids: Optional[list[str]] = Field(default=None, max_length=100)
 
 
+class LinkRef(_Body):
+    kind: Literal[tuple(ws.EVENT_LINK_KINDS)]  # type: ignore[valid-type]
+    id: str = Field(max_length=32)
+
+
+class EventBody(_Body):
+    title: Optional[str] = _TITLE
+    description: Optional[str] = _TEXT
+    category: Optional[Literal[ws.EVENT_CATEGORIES]] = None  # type: ignore[valid-type]
+    provenance: Optional[Literal[ws.EVENT_PROVENANCE]] = None  # type: ignore[valid-type]
+    date_precision: Optional[Literal[ws.DATE_PRECISIONS]] = None  # type: ignore[valid-type]
+    start_date: Optional[str] = Field(default=None, max_length=10)
+    start_time: Optional[str] = Field(default=None, max_length=5)
+    end_date: Optional[str] = Field(default=None, max_length=10)
+    end_time: Optional[str] = Field(default=None, max_length=5)
+    timezone: Optional[str] = Field(default=None, max_length=64)
+    notes: Optional[str] = _TEXT
+    links: Optional[list[LinkRef]] = Field(default=None, max_length=ws.MAX_LINKS)
+
+
+class CorrelationBody(_Body):
+    title: Optional[str] = _TITLE
+    explanation: Optional[str] = _TEXT
+    status: Optional[Literal[ws.CORRELATION_STATUSES]] = None  # type: ignore[valid-type]
+    confidence: Optional[Literal[ws.CONFIDENCE_LEVELS]] = None  # type: ignore[valid-type]
+    event_ids: Optional[list[str]] = Field(default=None, max_length=ws.MAX_LINKS)
+    evidence_ids: Optional[list[str]] = Field(default=None, max_length=ws.MAX_LINKS)
+    finding_id: Optional[str] = _ID
+    notes: Optional[str] = _TEXT
+    recorded_by: Optional[str] = _TITLE
+
+
 class PositionBody(_Body):
     x: float
     y: float
@@ -125,6 +157,8 @@ _SECTION_BODIES: dict[str, type[_Body]] = {
     "evidence": EvidenceBody,
     "entities": EntityBody,
     "relationships": RelationshipBody,
+    "events": EventBody,
+    "correlations": CorrelationBody,
 }
 
 
