@@ -27,7 +27,9 @@ def _pyproject_version() -> str:
 
 
 VERSION = _pyproject_version()
-CLI_PREFIX = f"uvx --from openosint=={VERSION} openosint "
+# Skills run this fork from the user's checkout (dependencies from its uv.lock), not the
+# upstream PyPI release; see test_skills_run_this_fork_never_the_pypi_release.
+CLI_PREFIX = 'uv run --locked --project "${OPENOSINT_SRC:?}" openosint '
 
 
 def _load_json(rel: str) -> dict:
@@ -83,10 +85,18 @@ def test_marketplace_manifest() -> None:
 
 
 def test_mcp_server_is_passive() -> None:
-    server = _load_json(".mcp.json")["mcpServers"]["openosint"]
-    assert server["command"] == "uvx"
-    assert server["args"] == ["--from", f"openosint=={VERSION}", "openosint-mcp"]
-    assert "--allow-active" not in server["args"]
+    """Nothing in the repo launches an MCP server automatically.
+
+    The root .mcp.json (a pinned `uvx ... openosint-mcp` that Claude Code starts when the
+    repo is opened) was removed on purpose: opening the repo must not run a package
+    downloaded from PyPI. Users register the server themselves; passive mode is the
+    server's own default. Fails if an upstream merge brings the auto-launch back.
+    """
+    assert not (ROOT / ".mcp.json").exists(), ".mcp.json would auto-launch an MCP server"
+    plugin = _load_json(".claude-plugin/plugin.json")
+    market = _load_json(".claude-plugin/marketplace.json")
+    assert "mcpServers" not in plugin
+    assert all("mcpServers" not in entry for entry in market["plugins"])
 
 
 @pytest.mark.parametrize("path", SKILL_FILES, ids=lambda p: p.parent.name)
@@ -137,15 +147,21 @@ def test_plugin_version_matches_pyproject() -> None:
     )
 
 
-def test_every_uvx_pin_matches_pyproject() -> None:
-    """Skills and .mcp.json must pin the release they document, never an unpinned (possibly older) build."""
-    files = [ROOT / ".mcp.json", *sorted((ROOT / "skills").rglob("*.md"))]
+def test_skills_run_this_fork_never_the_pypi_release() -> None:
+    """Skills run this fork from its local checkout, with dependencies from uv.lock.
+
+    `uvx openosint` / `uvx --from openosint…` / `pip install openosint` install the
+    upstream PyPI release, which lacks this fork's changes (e.g. --allow-active-agent),
+    so no skill may invoke them; every CLI line must use the fork-local prefix.
+    (Replaces the earlier check that skills pinned the PyPI release.)
+    """
     seen = 0
-    for path in files:
+    for path in sorted((ROOT / "skills").rglob("*.md")):
         text = path.read_text(encoding="utf-8")
-        for pin in re.findall(r"--from[\"',\s]+(openosint\S*?)[\"',\s]", text):
-            seen += 1
-            assert pin == f"openosint=={VERSION}", (
-                f"{path.name}: {pin!r}, expected openosint=={VERSION}"
-            )
-    assert seen >= 3
+        assert "openosint==" not in text, f"{path.relative_to(ROOT)} pins the PyPI release"
+        for block in re.findall(r"```bash\n(.*?)```", text, re.S):
+            for line in filter(None, (ln.strip() for ln in block.splitlines())):
+                if "openosint" in line:
+                    assert line.startswith(CLI_PREFIX), f"{path.name}: {line!r}"
+                    seen += 1
+    assert seen >= 9  # 8 commands in osint, 1 in exposure

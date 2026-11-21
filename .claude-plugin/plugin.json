@@ -1,10 +1,10 @@
 {
   "name": "openosint",
   "version": "2.38.2",
-  "description": "Passive OSINT and external exposure checks for domains, IPs and organizations: skills /osint and /exposure plus the OpenOSINT MCP server (passive mode).",
+  "description": "Passive OSINT and external exposure checks for domains, IPs and organizations: skills /osint and /exposure, run from a local checkout of this fork (OPENOSINT_SRC).",
   "author": { "name": "OpenOSINT", "url": "https://github.com/OpenOSINT" },
   "license": "MIT",
   "homepage": "https://openosint.tech",
-  "repository": "https://github.com/OpenOSINT/OpenOSINT",
+  "repository": "https://github.com/tusharlab2212/OpenOSINT",
   "keywords": ["osint", "recon", "dns", "exposure", "security", "mcp"]
 }

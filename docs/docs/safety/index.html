@@ -153,34 +153,42 @@
       <p>OpenOSINT is built so that a default install does not touch your target and cannot run away with requests.</p>
 <h2 id="passive-by-default">Passive by default</h2>
 <p>In passive mode agents and MCP clients are only offered tools that query third-party data sources or compute locally. Tools that touch the target's infrastructure, or send many requests about it from your IP, are not just refused: they are not offered to the model at all, and an MCP client does not see them in <code>tools/list</code>. If a disabled tool is requested anyway, it returns a structured <code>disabled_in_passive_mode</code> result that says how to enable it.</p>
-<p>Enable active tools only when you mean to:</p>
+<p>Enable active tools only when you mean to. What you need depends on who picks the tool: you, with a direct command, or an AI model.</p>
 <div class="table-wrap" tabindex="0" role="region" aria-label="Table"><table>
 <thead>
 <tr>
 <th>Where</th>
-<th>How</th>
+<th>Who picks the tool</th>
+<th>How to enable active tools</th>
 </tr>
 </thead>
 <tbody>
 <tr>
-<td>CLI and REPL</td>
-<td><code>openosint --allow-active ...</code></td>
+<td>CLI subcommands (<code>openosint email …</code>, <code>username</code>, <code>scrape</code>)</td>
+<td>you</td>
+<td><code>openosint --allow-active ...</code>, or <code>OPENOSINT_ALLOW_ACTIVE=1</code></td>
 </tr>
 <tr>
-<td>Any process</td>
-<td><code>OPENOSINT_ALLOW_ACTIVE=1</code></td>
+<td>REPL and <code>openosint multi</code></td>
+<td>the AI model</td>
+<td><code>--allow-active</code> (or <code>OPENOSINT_ALLOW_ACTIVE=1</code>) <strong>and</strong> <code>OPENOSINT_ALLOW_ACTIVE_AGENT=1</code></td>
 </tr>
 <tr>
-<td>Web UI</td>
-<td>Settings, "Enable active tools" (local installs only)</td>
+<td>Web UI chat, server or browser keys</td>
+<td>the AI model</td>
+<td>Settings, "Enable active tools" (local installs only) <strong>and</strong> <code>OPENOSINT_ALLOW_ACTIVE_AGENT=1</code> in the server's environment</td>
 </tr>
 <tr>
 <td>MCP server</td>
-<td><code>openosint-mcp --allow-active</code>, or <code>OPENOSINT_ALLOW_ACTIVE=1</code> in the client's <code>env</code></td>
+<td>the client's AI model</td>
+<td><code>openosint-mcp --allow-active --allow-active-agent</code>, or both variables in the client's <code>env</code> block</td>
 </tr>
 </tbody>
 </table></div>
 <p>A publicly reachable or demo web instance can never enable active tools, whatever its settings.</p>
+<h3 id="tools-chosen-by-an-ai-model">Tools chosen by an AI model</h3>
+<p>A model reads tool output, and tool output comes from web pages, pastes and other sources anyone can write to. Text planted there can try to steer the model into running a tool on someone you never named (prompt injection). So <code>OPENOSINT_ALLOW_ACTIVE</code> alone does not let a model run an active tool: a call the model chose also needs the separate <code>OPENOSINT_ALLOW_ACTIVE_AGENT=1</code>. Without it, the call is refused with <code>blocked_for_model</code> and nothing is sent. This covers the REPL, <code>openosint multi</code>, the web UI chat, the browser-key chat, every MCP call and automatic pivoting (<code>investigate_graph</code>), and is enforced in the tool code itself, not only in the model's instructions. Direct CLI subcommands, where you type the target, are not affected. Set <code>OPENOSINT_ALLOW_ACTIVE_AGENT</code> only for sessions where you accept that a model, possibly steered by what it reads, decides which targets your active tools hit.</p>
+<p>Every tool result a model receives is also marked as untrusted data inside clearly bounded markers, capped in size (<code>OPENOSINT_MAX_TOOL_RESULT_CHARS</code>, with an explicit note when output is cut), and the model is told never to follow instructions found in it. These measures reduce prompt injection; they do not eliminate it. A model can still be misled by what it reads, still choose passive lookups on identifiers it found in tool output (which sends those identifiers to third-party services), and still misreport a result. MCP results go back to your MCP client unwrapped, under the client's own handling of tool results.</p>
 <h2 id="tool-call-cap">Tool-call cap</h2>
 <p>Each user request may spend at most <code>OPENOSINT_MAX_TOOL_CALLS</code> tool calls (default 15); every new message starts a fresh budget. <code>investigate_multi</code> shares one cap across all its targets (<code>OPENOSINT_MAX_TOOL_CALLS_MULTI</code>, default 30). When the cap is reached the investigation stops with an explicit message and keeps the results so far.</p>
 <h2 id="noise-labels">Noise labels</h2>
@@ -393,7 +401,7 @@
 <ul>
 <li><strong>Passive is not private.</strong> Every service you query sees your search, and usually your API key or IP address. Treat lookups on Shodan, Have I Been Pwned, VirusTotal, Bright Data and similar services as visible to those providers.</li>
 <li><strong>Authorization.</strong> Investigate only targets you are permitted to. Local laws on personal data differ; the legal and operational responsibility is yours. Read the <a href="https://github.com/OpenOSINT/OpenOSINT/blob/main/DISCLAIMER.md">disclaimer</a>.</li>
-<li><strong>Verify the output.</strong> Tool results are real; the AI's reading of them is not proof. Check a finding at its source before you act on it.</li>
+<li><strong>Verify the output.</strong> Tool results are real; the AI's reading of them is not proof, and text inside a result can be written to mislead it. Check a finding at its source before you act on it.</li>
 <li><strong>Stored personal data.</strong> The optional <a href="/docs/entity-graph/">entity graph</a> keeps data on your disk. You are its controller.</li>
 </ul>
       <nav class="pager" aria-label="Previous and next page"><a class="prev" href="/docs/cli/" rel="prev"><small>Previous</small>CLI reference</a><a class="next" href="/docs/exposure/" rel="next"><small>Next</small>Exposure report</a>

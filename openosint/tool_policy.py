@@ -25,6 +25,9 @@ from enum import Enum
 from typing import Any, TypeVar
 
 ENV_ALLOW_ACTIVE = "OPENOSINT_ALLOW_ACTIVE"
+# Second, separate opt-in: lets a tool call chosen by an AI model (agent loop, web chat,
+# browser chat, MCP client, auto-pivot) run an active tool. Off by default.
+ENV_ALLOW_ACTIVE_AGENT = "OPENOSINT_ALLOW_ACTIVE_AGENT"
 ENV_MAX_CALLS = "OPENOSINT_MAX_TOOL_CALLS"
 ENV_MAX_CALLS_MULTI = "OPENOSINT_MAX_TOOL_CALLS_MULTI"
 DEFAULT_MAX_CALLS = 15
@@ -144,13 +147,58 @@ _force_passive: contextvars.ContextVar[bool] = contextvars.ContextVar(
 )
 
 
+# True while a tool call an AI model chose is being authorised or executed. Text the
+# model read in earlier tool output can steer that choice (prompt injection), so active
+# tools there need ENV_ALLOW_ACTIVE_AGENT on top of ENV_ALLOW_ACTIVE.
+_model_selected: contextvars.ContextVar[bool] = contextvars.ContextVar(
+    "openosint_model_selected", default=False
+)
+
+
+class ControlResult(str):
+    """A message OpenOSINT itself generated about a tool call (refused, disabled, over
+    budget, unknown tool) rather than data a tool retrieved. Passed to the model as-is;
+    everything else a tool returns is wrapped as untrusted (openosint.tool_output)."""
+
+
 def env_allows_active() -> bool:
     return os.environ.get(ENV_ALLOW_ACTIVE, "").strip().lower() in _TRUE
 
 
+def env_allows_active_agent() -> bool:
+    return os.environ.get(ENV_ALLOW_ACTIVE_AGENT, "").strip().lower() in _TRUE
+
+
 def active_enabled() -> bool:
-    """True only when the operator opted in AND this context isn't forced passive."""
-    return env_allows_active() and not _force_passive.get()
+    """True only when the operator opted in, this context isn't forced passive and, for
+    a call an AI model chose, the separate agent opt-in is set as well."""
+    if not env_allows_active() or _force_passive.get():
+        return False
+    return not _model_selected.get() or env_allows_active_agent()
+
+
+@contextmanager
+def model_selected(is_model: bool = True) -> Iterator[None]:
+    """Mark the enclosed tool authorisation/execution as chosen by an AI model."""
+    token = _model_selected.set(is_model)
+    try:
+        yield
+    finally:
+        _model_selected.reset(token)
+
+
+def is_model_selected() -> bool:
+    return _model_selected.get()
+
+
+def _blocked_only_for_model() -> bool:
+    """Active mode is on, but this call was chosen by a model without the agent opt-in."""
+    return (
+        env_allows_active()
+        and not _force_passive.get()
+        and _model_selected.get()
+        and not env_allows_active_agent()
+    )
 
 
 @contextmanager
@@ -202,6 +250,12 @@ def describe(name: str, description: str) -> str:
 def enable_hint() -> str:
     if is_forced_passive():
         return "Active tools are not available on this public/restricted instance."
+    if _blocked_only_for_model():
+        return (
+            "Active tools are enabled, but this call was chosen by the AI model, which needs a "
+            f"separate opt-in: {ENV_ALLOW_ACTIVE_AGENT}=1. Do not retry; tell the user they can "
+            "run the tool themselves from the CLI (openosint --allow-active ...) if they want it."
+        )
     return (
         "Enable with --allow-active, OPENOSINT_ALLOW_ACTIVE=1, the web Settings toggle, "
         "or the MCP server's --allow-active option. Active tools are noisy and may leave traces "
@@ -210,10 +264,12 @@ def enable_hint() -> str:
 
 
 def disabled_result(name: str, detail: str = "", also_needed: str = "") -> str:
-    """Structured JSON string returned when a non-passive tool/mode is requested in passive mode."""
+    """Structured JSON string returned when a non-passive tool/mode is refused: in passive
+    mode, or (status "blocked_for_model") when only the model opt-in is missing."""
     policy = TOOL_POLICY.get(name)
+    status = "blocked_for_model" if _blocked_only_for_model() else "disabled_in_passive_mode"
     payload = {
-        "status": "disabled_in_passive_mode",
+        "status": status,
         "tool": name,
         "noise": policy.noise.value if policy else "unknown",
         "reason": detail or (policy.note if policy else "Not a registered tool."),
@@ -223,19 +279,22 @@ def disabled_result(name: str, detail: str = "", also_needed: str = "") -> str:
         also_needed
     ):  # e.g. missing credentials, so the user sees one complete list instead of two walls
         payload["also_needed"] = also_needed
-    return json.dumps(payload)
+    return ControlResult(json.dumps(payload))
 
 
 def humanize(result: str) -> str:
     """Plain-text form of a ``disabled_result`` JSON (anything else passes through)."""
-    if not result.startswith('{"status": "disabled_in_passive_mode"'):
+    if not result.startswith(
+        ('{"status": "disabled_in_passive_mode"', '{"status": "blocked_for_model"')
+    ):
         return result
     try:
         data = json.loads(result)
     except ValueError:
         return result
+    prefix = "[model-selected]" if data["status"] == "blocked_for_model" else "[passive mode]"
     text = (
-        f"[passive mode] {data['tool']} is disabled ({data['noise']}): {data['reason']}\n"
+        f"{prefix} {data['tool']} is disabled ({data['noise']}): {data['reason']}\n"
         f"{data['how_to_enable']}"
     )
     return f"{text}\n\n{data['also_needed']}" if data.get("also_needed") else text
@@ -250,6 +309,13 @@ def filter_definitions(definitions: list[dict[str, Any]]) -> list[dict[str, Any]
             continue
         out.append({**definition, "description": describe(name, definition.get("description", ""))})
     return out
+
+
+def filter_definitions_for_model(definitions: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """filter_definitions() as seen by an AI model: active tools are only offered when the
+    model may actually run them (ENV_ALLOW_ACTIVE and ENV_ALLOW_ACTIVE_AGENT)."""
+    with model_selected():
+        return filter_definitions(definitions)
 
 
 _F = TypeVar("_F", bound=Callable[..., Awaitable[Any]])
@@ -320,7 +386,7 @@ class ToolBudget:
         return self.used >= self.limit
 
     def message(self) -> str:
-        return (
+        return ControlResult(
             f"Tool call limit reached ({self.limit} calls for this request). Investigation stopped; "
             f"results so far are above. Send another message to continue, or raise "
             f"{ENV_MAX_CALLS} to allow more."

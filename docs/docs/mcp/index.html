@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>OpenOSINT MCP server for Claude Desktop and Claude Code</title>
-<meta name="description" content="Add the openosint-mcp server to Claude Desktop, Claude Code, Cursor or any MCP client with uvx. Config snippets, API keys, and how to enable active tools.">
+<meta name="description" content="Run openosint-mcp from a checkout of this fork with uv in Claude Desktop, Claude Code, Cursor or any MCP client. Config, API keys, active tools.">
 <link rel="canonical" href="https://openosint.tech/docs/mcp/">
 <meta name="theme-color" content="#16181b">
 <link rel="icon" href="/favicon.ico" sizes="48x48">
@@ -16,7 +16,7 @@
 <meta property="og:site_name" content="OpenOSINT">
 <meta property="og:type" content="website">
 <meta property="og:title" content="OpenOSINT MCP server for Claude Desktop and Claude Code">
-<meta property="og:description" content="Add the openosint-mcp server to Claude Desktop, Claude Code, Cursor or any MCP client with uvx. Config snippets, API keys, and how to enable active tools.">
+<meta property="og:description" content="Run openosint-mcp from a checkout of this fork with uv in Claude Desktop, Claude Code, Cursor or any MCP client. Config, API keys, active tools.">
 <meta property="og:url" content="https://openosint.tech/docs/mcp/">
 <meta property="og:image" content="https://openosint.tech/assets/social-card.png">
 <meta property="og:image:width" content="1280">
@@ -24,7 +24,7 @@
 <meta property="og:image:alt" content="OpenOSINT: the OSINT toolkit for AI agents. Agent Skill, MCP server and CLI.">
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:title" content="OpenOSINT MCP server for Claude Desktop and Claude Code">
-<meta name="twitter:description" content="Add the openosint-mcp server to Claude Desktop, Claude Code, Cursor or any MCP client with uvx. Config snippets, API keys, and how to enable active tools.">
+<meta name="twitter:description" content="Run openosint-mcp from a checkout of this fork with uv in Claude Desktop, Claude Code, Cursor or any MCP client. Config, API keys, active tools.">
 <meta name="twitter:image" content="https://openosint.tech/assets/social-card.png">
 <script type="application/ld+json">
 {
@@ -152,24 +152,24 @@
       <h1>Use OpenOSINT as an MCP server</h1>
       <p>The MCP server exposes the OpenOSINT tools to any <a href="https://modelcontextprotocol.io/">Model Context Protocol</a> client over stdio. The client's own model drives the tools; OpenOSINT only runs them and returns real output.</p>
 <h2 id="requirements">Requirements</h2>
-<p>Install <a href="https://docs.astral.sh/uv/">uv</a>. <code>uvx</code> then fetches and runs OpenOSINT on demand, so there is no separate install step. The command every client runs is the same:</p>
-<pre><code class="language-bash">uvx --from openosint openosint-mcp
+<p>Install <a href="https://docs.astral.sh/uv/">uv</a> and clone this fork (<code>git clone https://github.com/tusharlab2212/OpenOSINT</code>). Every client then runs the server from that checkout, with dependencies installed from its <code>uv.lock</code>:</p>
+<pre><code class="language-bash">uv run --locked --project /absolute/path/to/OpenOSINT openosint-mcp
 </code></pre>
-<p>If you installed the package with pip, the executable is <code>openosint-mcp</code>.</p>
+<p>This repository is a fork of OpenOSINT. <code>uvx --from openosint openosint-mcp</code> and <code>pip install openosint</code> install the <strong>upstream</strong> release from PyPI instead, which does not have this fork's changes: it rejects <code>--allow-active-agent</code>, for example. If you installed this fork with <code>pip install -e .</code>, the executable is <code>openosint-mcp</code>.</p>
 <h2 id="claude-code">Claude Code</h2>
-<pre><code class="language-bash">claude mcp add openosint -- uvx --from openosint openosint-mcp
+<pre><code class="language-bash">claude mcp add openosint -- uv run --locked --project /absolute/path/to/OpenOSINT openosint-mcp
 claude mcp list
 </code></pre>
 <p>Add API keys with <code>-e</code> flags before the <code>--</code>:</p>
-<pre><code class="language-bash">claude mcp add openosint -e SHODAN_API_KEY=your-key -e HIBP_API_KEY=your-key -- uvx --from openosint openosint-mcp
+<pre><code class="language-bash">claude mcp add openosint -e SHODAN_API_KEY=your-key -e HIBP_API_KEY=your-key -- uv run --locked --project /absolute/path/to/OpenOSINT openosint-mcp
 </code></pre>
 <h2 id="claude-desktop">Claude Desktop</h2>
 <p>Edit <code>claude_desktop_config.json</code> and restart the app. On macOS it is at <code>~/Library/Application Support/Claude/</code>, on Windows at <code>%APPDATA%\Claude\</code>.</p>
 <pre><code class="language-json">{
   &quot;mcpServers&quot;: {
     &quot;openosint&quot;: {
-      &quot;command&quot;: &quot;uvx&quot;,
-      &quot;args&quot;: [&quot;--from&quot;, &quot;openosint&quot;, &quot;openosint-mcp&quot;],
+      &quot;command&quot;: &quot;uv&quot;,
+      &quot;args&quot;: [&quot;run&quot;, &quot;--locked&quot;, &quot;--project&quot;, &quot;/absolute/path/to/OpenOSINT&quot;, &quot;openosint-mcp&quot;],
       &quot;env&quot;: {
         &quot;SHODAN_API_KEY&quot;: &quot;your-key&quot;
       }
@@ -179,24 +179,23 @@ claude mcp list
 </code></pre>
 <h2 id="cursor-and-other-clients">Cursor and other clients</h2>
 <p>Any client that can launch a stdio MCP server takes the same command and arguments. For Cursor, put the JSON above in <code>~/.cursor/mcp.json</code> (all projects) or <code>.cursor/mcp.json</code> (one project).</p>
-<p>Desktop apps often start with a minimal <code>PATH</code> that does not include <code>uvx</code>. If the server fails to start, replace <code>"uvx"</code> with the absolute path printed by <code>which uvx</code> (macOS, Linux) or <code>where uvx</code> (Windows).</p>
+<p>Desktop apps often start with a minimal <code>PATH</code> that does not include <code>uv</code>. If the server fails to start, replace <code>"uv"</code> with the absolute path printed by <code>which uv</code> (macOS, Linux) or <code>where uv</code> (Windows).</p>
 <h2 id="api-keys">API keys</h2>
-<p>Put keys in the client's <code>env</code> block, as above. The server is started by the client with an unrelated working directory, so a <code>.env</code> file is not picked up reliably. To use one anyway, point to it:</p>
+<p>Put keys in the client's <code>env</code> block, as above. OpenOSINT does not read a <code>.env</code> from the working directory the client starts it in. To use a file, point to it:</p>
 <pre><code class="language-json">&quot;env&quot;: { &quot;OPENOSINT_ENV_FILE&quot;: &quot;/absolute/path/to/.env&quot; }
 </code></pre>
+<p>Some variables are ignored in a file, <code>OPENOSINT_ALLOW_ACTIVE</code> among them; put those in the <code>env</code> block itself. See <a href="/docs/configuration/#what-a-file-may-not-set">What a file may not set</a>.</p>
 <p>The <a href="/docs/configuration/">configuration page</a> lists every key and which tools need it.</p>
 <h2 id="passive-tools-only-by-default">Passive tools only, by default</h2>
-<p><code>tools/list</code> returns only the passive tools, so the client's model never sees the noisy ones. Each tool description carries its noise label. To also expose the tools that touch the target or are noisy, do one of:</p>
+<p><code>tools/list</code> returns only the passive tools, so the client's model never sees the noisy ones. Each tool description carries its noise label. Every MCP call is chosen by the client's model, so exposing the tools that touch the target or are noisy takes two separate opt-ins, both required:</p>
 <ul>
-<li>append <code>--allow-active</code> after <code>openosint-mcp</code>;</li>
-<li>set <code>OPENOSINT_ALLOW_ACTIVE=1</code> in the <code>env</code> block.</li>
+<li>append <code>--allow-active --allow-active-agent</code> after <code>openosint-mcp</code>;</li>
+<li>or set <code>OPENOSINT_ALLOW_ACTIVE=1</code> and <code>OPENOSINT_ALLOW_ACTIVE_AGENT=1</code> in the <code>env</code> block.</li>
 </ul>
-<p>Read the <a href="/docs/safety/">noise table</a> before you do.</p>
+<p>With only the first, active tools stay hidden and a call to one returns <code>blocked_for_model</code>. Read the <a href="/docs/safety/">noise table and the section on model-chosen tools</a> before you enable both.</p>
 <p>The server does not cap how many tools your client calls. Only <code>investigate_multi</code>, which runs several targets at once, shares one budget of 30 calls by default.</p>
 <h2 id="pin-a-version">Pin a version</h2>
-<pre><code class="language-bash">uvx --from openosint==2.38.2 openosint-mcp
-</code></pre>
-<p>From a source checkout, use <code>"command": "python", "args": ["-m", "openosint.mcp_server"]</code>.</p>
+<p>Pin the checkout itself: <code>git checkout &lt;commit&gt;</code> in your clone runs exactly that commit of this fork, and <code>--locked</code> keeps its dependencies at the versions in its <code>uv.lock</code>. A PyPI version pin (<code>uvx --from openosint==2.38.2 …</code>) selects an upstream release, not this fork.</p>
 <h2 id="example-prompt">Example prompt</h2>
 <pre><code class="language-text">Investigate example.com. Check its DNS and email authentication, then its registration.
 </code></pre>

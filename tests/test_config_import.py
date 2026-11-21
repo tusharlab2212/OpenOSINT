@@ -168,3 +168,40 @@ def test_cli_subcommand_is_wired_end_to_end(tmp_path):
     assert "Imported 1 setting(s)" in result.stdout
     assert "FAKE-not-a-real-key" not in result.stdout + result.stderr
     assert (tmp_path / "home" / "config.env").is_file()
+
+
+def test_cli_defaults_to_the_working_directory_env_it_did_not_load(tmp_path):
+    """Migration path: a ./.env is no longer loaded, but `config import` (no --from)
+    offers exactly that file, still behind --yes / confirmation, names only."""
+    import subprocess
+    import sys
+    from pathlib import Path
+
+    from dotenv import dotenv_values
+
+    work = tmp_path / "work"
+    work.mkdir()
+    (work / ".env").write_text("SHODAN_API_KEY=FAKE-cwd-key\n")
+    env = {
+        "PATH": os.environ.get("PATH", ""),
+        "OPENOSINT_HOME": str(tmp_path / "home"),
+        "PYTHONPATH": str(Path(__file__).resolve().parent.parent),
+    }
+
+    result = subprocess.run(
+        [sys.executable, "-m", "openosint.cli", "config", "import", "--yes"],
+        cwd=str(work),
+        env=env,
+        capture_output=True,
+        text=True,
+        stdin=subprocess.DEVNULL,
+        timeout=60,
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert "Not loading" in result.stderr  # it was not loaded at startup
+    assert "Imported 1 setting(s)" in result.stdout  # but it is the import source
+    assert "FAKE-cwd-key" not in result.stdout + result.stderr
+    saved = dotenv_values(tmp_path / "home" / "config.env")
+    assert saved["SHODAN_API_KEY"] == "FAKE-cwd-key"

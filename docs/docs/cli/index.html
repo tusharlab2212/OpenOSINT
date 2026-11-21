@@ -360,15 +360,15 @@
 </tr>
 <tr>
 <td><code>openosint config import [--from PATH] [--only KEY,...] [--yes]</code></td>
-<td>Copy settings from a <code>.env</code> into <code>~/.openosint/config.env</code> after confirmation</td>
+<td>Copy API keys and provider settings from a <code>.env</code> into <code>~/.openosint/config.env</code> after confirmation. Without <code>--from</code>: the loaded <code>.env</code>, else the nearest <code>.env</code> in the current directory or a parent, which OpenOSINT no longer loads</td>
 </tr>
 <tr>
 <td><code>openosint sponsors</code></td>
 <td>List current sponsors and featured integrations</td>
 </tr>
 <tr>
-<td><code>openosint-mcp [--allow-active]</code></td>
-<td>The <a href="/docs/mcp/">MCP server</a> (a separate executable)</td>
+<td><code>openosint-mcp [--allow-active] [--allow-active-agent]</code></td>
+<td>The <a href="/docs/mcp/">MCP server</a> (a separate executable). Active tools need both flags</td>
 </tr>
 </tbody>
 </table></div>
@@ -383,7 +383,7 @@
 <tbody>
 <tr>
 <td><code>--allow-active</code></td>
-<td>Enable active tools (noisy, or they touch the target). Off by default; same as <code>OPENOSINT_ALLOW_ACTIVE=1</code></td>
+<td>Enable active tools (noisy, or they touch the target). Off by default; same as <code>OPENOSINT_ALLOW_ACTIVE=1</code>. Enough for direct subcommands; in the REPL and <code>multi</code>, where the AI model picks the tools, active tools also need <code>OPENOSINT_ALLOW_ACTIVE_AGENT=1</code></td>
 </tr>
 <tr>
 <td><code>--json</code></td>

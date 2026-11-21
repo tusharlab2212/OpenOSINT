@@ -13,7 +13,12 @@ import logging
 from openosint.proxy import get_subprocess_env
 from openosint.tool_policy import requires_active
 from openosint.tools.exceptions import OSINTError, ToolExecutionError
-from openosint.utils import attribution_line, run_subprocess, strip_promotions
+from openosint.utils import (
+    attribution_line,
+    run_subprocess,
+    strip_promotions,
+    validate_cli_target,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -24,6 +29,7 @@ _INSTALL_HINT = "Install it with: uv tool install holehe (or: pip install holehe
 
 async def _run_holehe(email: str, timeout_seconds: int) -> str:
     """Execute holehe against email and return raw stdout."""
+    email = validate_cli_target(email, "email address")
     result = await run_subprocess(
         binary=_BINARY,
         args=[email, "--only-used"],

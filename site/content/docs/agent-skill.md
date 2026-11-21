@@ -6,16 +6,16 @@ description: "Install the OpenOSINT Agent Skill or Claude Code plugin for passiv
 group: Get started
 order: 2
 ---
-OpenOSINT ships as an [Agent Skill](https://agentskills.io/) and as a Claude Code plugin. An agent that has it can investigate a domain, IP address or organization with real, passive tools, and must cite the tool call behind every finding. It needs [`uv`](https://docs.astral.sh/uv/getting-started/installation/) and network access. It needs no API key and no OpenOSINT AI provider: your agent is the model.
+OpenOSINT ships as an [Agent Skill](https://agentskills.io/) and as a Claude Code plugin. An agent that has it can investigate a domain, IP address or organization with real, passive tools, and must cite the tool call behind every finding. It needs [`uv`](https://docs.astral.sh/uv/getting-started/installation/), a local checkout of this fork whose absolute path is in `OPENOSINT_SRC`, and network access. It needs no API key and no OpenOSINT AI provider: your agent is the model.
 
 ## Install
 
 ### Claude Code (plugin)
 
-The plugin bundles both skills and a passive [MCP server](/docs/mcp/), pinned to release %%VERSION%%.
+The plugin bundles both skills. Add the [MCP server](/docs/mcp/) separately if you want it.
 
 ```text
-/plugin marketplace add OpenOSINT/OpenOSINT
+/plugin marketplace add tusharlab2212/OpenOSINT
 /plugin install openosint@openosint
 /openosint:osint example.com
 ```
@@ -25,14 +25,14 @@ The plugin bundles both skills and a passive [MCP server](/docs/mcp/), pinned to
 Codex, Gemini CLI, Cursor and other Agent Skills clients can install the skills only (no MCP server):
 
 ```bash
-npx skills add OpenOSINT/OpenOSINT
+npx skills add tusharlab2212/OpenOSINT
 ```
 
 Then ask your agent in plain words, or invoke the skill by name, for example `/osint example.com` in Claude Code. See [the namespacing note](#osint-or-openosintosint-does-nothing) below.
 
 ### By hand
 
-Copy `skills/osint/` and `skills/exposure/` from the [repository](https://github.com/OpenOSINT/OpenOSINT/tree/main/skills) into the skills folder your agent reads (for Claude Code, `~/.claude/skills/` or `.claude/skills/` in a project).
+Copy `skills/osint/` and `skills/exposure/` from the [repository](https://github.com/tusharlab2212/OpenOSINT/tree/main/skills) into the skills folder your agent reads (for Claude Code, `~/.claude/skills/` or `.claude/skills/` in a project).
 
 ## What the skills do
 
@@ -41,7 +41,7 @@ Copy `skills/osint/` and `skills/exposure/` from the [repository](https://github
 | `osint` | Recon on a domain, IP address or organization | `exposure`, `dns`, `rdap`, `whois`, `dorks`, `gdelt` and `ip` as the target needs, then a Markdown report |
 | `exposure` | "How exposed is this domain?" | `openosint exposure DOMAIN`: an A to F grade for email authentication, TLS, registration and security headers |
 
-Both call the [CLI](/docs/cli/) with `--json` through `uvx --from openosint==%%VERSION%% openosint ...`, so they work on any agent without an MCP server. When the `openosint` MCP server is already connected, the `osint` skill uses its tools instead; they return the same data.
+Both call the [CLI](/docs/cli/) with `--json` through `uv run --locked --project "${OPENOSINT_SRC:?}" openosint ...`, so they run this fork's code with the dependencies in its `uv.lock`, on any agent without an MCP server. They never use `uvx openosint`, which installs the upstream PyPI release. When the `openosint` MCP server is already connected, the `osint` skill uses its tools instead; they return the same data.
 
 The report has four parts: target and scope, findings (each with its citation), what was not checked or needs a key, and leads to verify.
 
@@ -59,9 +59,9 @@ One thing still contacts the target: the `exposure` TLS and header checks make a
 
 ## Troubleshooting
 
-### `uvx` is not found
+### `uv` is not found, or `OPENOSINT_SRC` is not set
 
-Install uv (`curl -LsSf https://astral.sh/uv/install.sh | sh` on macOS and Linux), then open a new terminal so it is on your `PATH`. Desktop apps often start with a minimal `PATH`: for the plugin's MCP server, or any MCP client, use the absolute path from `which uvx` (macOS, Linux) or `where uvx` (Windows) as the command.
+Install uv (see the [uv installation guide](https://docs.astral.sh/uv/getting-started/installation/)), then open a new terminal so it is on your `PATH`. Set `OPENOSINT_SRC` to the absolute path of your checkout of this fork; the skill commands stop with an error if it is unset. Desktop apps often start with a minimal `PATH`: for an MCP client, use the absolute path from `which uv` (macOS, Linux) or `where uv` (Windows) as the command.
 
 ### `/osint` or `/openosint:osint` does nothing
 
@@ -69,7 +69,7 @@ Skills installed by the Claude Code plugin are namespaced by the plugin name, so
 
 ### The first run is slow, or fails offline
 
-`uvx` downloads the pinned OpenOSINT release the first time and caches it. That needs network access; later runs start from the cache.
+`uv run --locked` installs the dependencies recorded in the checkout's `uv.lock` the first time and caches them. That needs network access; later runs start from the cache.
 
 ### A tool says a key is missing
 

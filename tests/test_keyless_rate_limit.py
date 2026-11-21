@@ -18,6 +18,9 @@ NEWLY_LIMITED = ["search_github", "search_email", "search_username", "search_dom
 
 @pytest.fixture
 def limited_app(monkeypatch):
+    # /api/run executes the browser chat model's calls; active tools there also need the
+    # model opt-in (its default denial is covered in tests/test_agent_safety.py).
+    monkeypatch.setenv("OPENOSINT_ALLOW_ACTIVE_AGENT", "1")
     monkeypatch.setattr(ws, "_RATE_STORE", {})
     monkeypatch.setattr(ws, "_RL_MAX_REQS", 2)
 

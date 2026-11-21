@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from urllib.parse import quote
 
 import requests
 
@@ -36,7 +37,10 @@ def _fetch_paste_data(query: str, timeout_seconds: int) -> list[dict]:
     """
     try:
         response = requests.get(
-            _PSBDMP_URL.format(query=query),
+            # Encoded as a single path segment: "/", "?", "#", "%" or spaces in a target
+            # can't change which psbdmp.ws endpoint is called. "@" is valid in a path
+            # segment and kept, so ordinary email/username URLs are unchanged.
+            _PSBDMP_URL.format(query=quote(query, safe="@")),
             timeout=timeout_seconds,
             proxies=get_requests_proxies(),
         )

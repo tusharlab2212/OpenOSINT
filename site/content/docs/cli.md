@@ -74,15 +74,15 @@ These are noisy and off by default. They need the local binary installed and `--
 | `openosint history [--all] [--last N] [open N \| clear]` | List, open or delete saved REPL sessions |
 | `openosint proxy-test` | Fetch your exit IP through the configured proxy |
 | `openosint setup brightdata` | Guided setup for the Bright Data tools: checks your token, lists or creates the SERP API and Web Unlocker zones, saves them to `config.env`. Interactive only; asks before every change |
-| `openosint config import [--from PATH] [--only KEY,...] [--yes]` | Copy settings from a `.env` into `~/.openosint/config.env` after confirmation |
+| `openosint config import [--from PATH] [--only KEY,...] [--yes]` | Copy API keys and provider settings from a `.env` into `~/.openosint/config.env` after confirmation. Without `--from`: the loaded `.env`, else the nearest `.env` in the current directory or a parent, which OpenOSINT no longer loads |
 | `openosint sponsors` | List current sponsors and featured integrations |
-| `openosint-mcp [--allow-active]` | The [MCP server](/docs/mcp/) (a separate executable) |
+| `openosint-mcp [--allow-active] [--allow-active-agent]` | The [MCP server](/docs/mcp/) (a separate executable). Active tools need both flags |
 
 ## Global flags
 
 | Flag | Meaning |
 |---|---|
-| `--allow-active` | Enable active tools (noisy, or they touch the target). Off by default; same as `OPENOSINT_ALLOW_ACTIVE=1` |
+| `--allow-active` | Enable active tools (noisy, or they touch the target). Off by default; same as `OPENOSINT_ALLOW_ACTIVE=1`. Enough for direct subcommands; in the REPL and `multi`, where the AI model picks the tools, active tools also need `OPENOSINT_ALLOW_ACTIVE_AGENT=1` |
 | `--json` | Structured JSON output |
 | `-v`, `--verbose` | Debug logging to stderr |
 | `--parallel` | Run complementary tools concurrently |

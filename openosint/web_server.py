@@ -52,19 +52,22 @@ from openosint.agent import default_anthropic_model
 from openosint.brightdata import LINK_PLACEHOLDER, resolve, set_surface
 from openosint.env import load_env_or_exit
 from openosint.tools.generate_dorks import run_dork_osint
+from openosint.tool_output import UNTRUSTED_OUTPUT_RULES, prepare_for_model
 from openosint.tool_policy import (
     ENV_ALLOW_ACTIVE,
     TOOL_POLICY,
+    ControlResult,
     ToolBudget,
     describe,
     disabled_result,
     env_allows_active,
-    filter_definitions,
+    filter_definitions_for_model,
     is_tool_enabled,
     label,
     max_tool_calls,
     forced_passive,
     is_forced_passive,
+    model_selected,
 )
 from openosint.tools.scrape_url import run_scrape_url_osint
 from openosint.tools.search_abuseipdb import run_abuseipdb_osint
@@ -75,7 +78,7 @@ from openosint.tools.search_domain import run_domain_osint
 from openosint.tools.search_dorks_live import run_dorks_live_osint
 from openosint.tools.search_email import run_email_osint
 from openosint.tools.search_footprint import run_footprint_osint
-from openosint.tools.search_gdelt_geo import run_gdelt_geo_osint, split_geojson_fence
+from openosint.tools.search_gdelt_geo import run_gdelt_geo_osint
 from openosint.tools.search_github import run_github_osint
 from openosint.tools.search_ip import run_ip_osint
 from openosint.tools.search_ip2location import run_ip2location_osint
@@ -90,7 +93,6 @@ from openosint import __version__ as _VERSION
 from openosint.config_store import config_path, read_config, validate_pair, write_config
 from openosint.env import mark_saved, value_source
 from openosint.paths import home_dir
-from openosint.regexes import EMAIL_FIND_RE
 from openosint.request_guard import RequestGuardMiddleware
 from openosint.settings_catalog import SAVEABLE_NAMES, SETTING_NAMES, public_catalog
 from openosint.utils import find_binary
@@ -1179,28 +1181,47 @@ def _select_chat_backend(req: "ChatRequest") -> str:
 
 def _offered_tools() -> list[dict]:
     """Tool schemas the current mode offers to a model, each with its noise label."""
-    return filter_definitions(_CLAUDE_TOOLS)
+    return filter_definitions_for_model(_CLAUDE_TOOLS)
 
 
 async def _run_tool(
     tool_name: str, tool_input: str, timeout: int = 120, budget: ToolBudget | None = None
 ) -> str:
+    """Run a tool the chat model chose: authorised and executed as model-selected."""
     # Refused and unknown requests count too, so a model can't loop on them forever.
     if budget is not None and not budget.try_consume():
         return budget.message()
     if tool_name not in _RUNNERS:
-        return f"Unknown tool: {tool_name}"
-    if not is_tool_enabled(tool_name):
-        return disabled_result(tool_name)
-    if not str(tool_input).strip():
-        return (
-            f"Tool call error: 'input' is required for {tool_name} but was not provided. "
-            "Retry with the target value as the 'input' parameter."
-        )
-    try:
-        return await _RUNNERS[tool_name](tool_input, timeout)
-    except Exception as exc:
-        return f"Error: {exc}"
+        return ControlResult(f"Unknown tool: {tool_name}")
+    with model_selected():
+        if not is_tool_enabled(tool_name):
+            return disabled_result(tool_name)
+        if not str(tool_input).strip():
+            return ControlResult(
+                f"Tool call error: 'input' is required for {tool_name} but was not provided. "
+                "Retry with the target value as the 'input' parameter."
+            )
+        try:
+            return await _RUNNERS[tool_name](tool_input, timeout)
+        except Exception as exc:
+            return f"Error: {exc}"
+
+
+def _with_system_message(messages: list[dict]) -> list[dict]:
+    """Chat history for an OpenAI-compatible/Ollama backend, led by the system rules."""
+    return [{"role": "system", "content": _CHAT_SYSTEM_PROMPT}] + [
+        m for m in messages if m.get("role") != "system"
+    ]
+
+
+_CHAT_SYSTEM_PROMPT = (
+    "You are OpenOSINT, an AI-powered OSINT investigation assistant. "
+    "When the user asks you to investigate a target, use the available tools to gather intelligence. "
+    "Summarize findings clearly and highlight anything suspicious or notable. "
+    "Always clarify what tools you used and what each result means. "
+    "Use only the tools you are given; if a tool result says it is disabled, do not retry it.\n\n"
+    + UNTRUSTED_OUTPUT_RULES
+)
 
 
 async def _stream_claude(messages: list[dict]) -> AsyncIterator[dict]:
@@ -1223,13 +1244,7 @@ async def _stream_claude(messages: list[dict]) -> AsyncIterator[dict]:
     msgs = list(messages)
     budget = ToolBudget()  # one per user request; bounds the loop below
 
-    system_prompt = (
-        "You are OpenOSINT, an AI-powered OSINT investigation assistant. "
-        "When the user asks you to investigate a target, use the available tools to gather intelligence. "
-        "Summarize findings clearly and highlight anything suspicious or notable. "
-        "Always clarify what tools you used and what each result means. "
-        "Use only the tools you are given; if a tool result says it is disabled, do not retry it."
-    )
+    system_prompt = _CHAT_SYSTEM_PROMPT
 
     while True:
         full_content: list[dict] = []
@@ -1310,14 +1325,13 @@ async def _stream_claude(messages: list[dict]) -> AsyncIterator[dict]:
                                 "output": result,
                                 "elapsed": elapsed,
                             }
-                            # Provider gets the stripped text; every subsequent
-                            # round resends the whole message list.
-                            model_text, _ = split_geojson_fence(result)
+                            # Provider gets the wrapped, untrusted-marked, capped
+                            # text without GeoJSON; the browser got the full result.
                             pending_tool_results.append(
                                 {
                                     "type": "tool_result",
                                     "tool_use_id": current_block["id"],
-                                    "content": model_text,
+                                    "content": prepare_for_model(tool_name, result),
                                 }
                             )
 
@@ -1351,7 +1365,7 @@ async def _stream_ollama(
 ) -> AsyncIterator[dict]:
     """Yield SSE event dicts using Ollama chat API with tool_use."""
     host = ollama_host.rstrip("/")
-    msgs = list(messages)
+    msgs = _with_system_message(list(messages))
 
     budget = ToolBudget()
 
@@ -1436,8 +1450,9 @@ async def _stream_ollama(
             elapsed = round(time.monotonic() - t0, 2)
 
             yield {"type": "tool_result", "tool": tool_name, "output": result, "elapsed": elapsed}
-            model_text, _ = split_geojson_fence(result)
-            tool_results_for_next.append({"role": "tool", "content": model_text})
+            tool_results_for_next.append(
+                {"role": "tool", "content": prepare_for_model(tool_name, result)}
+            )
 
         if budget.denied:
             yield {"type": "error", "message": budget.message()}
@@ -1464,7 +1479,7 @@ async def _stream_openai(
     headers = {"Content-Type": "application/json"}
     if api_key:
         headers["Authorization"] = f"Bearer {api_key}"
-    msgs = list(messages)
+    msgs = _with_system_message(list(messages))
 
     budget = ToolBudget()
 
@@ -1556,12 +1571,11 @@ async def _stream_openai(
             elapsed = round(time.monotonic() - t0, 2)
 
             yield {"type": "tool_result", "tool": tool_name, "output": result, "elapsed": elapsed}
-            model_text, _ = split_geojson_fence(result)
             tool_results_for_next.append(
                 {
                     "role": "tool",
                     "tool_call_id": tc.get("id", ""),
-                    "content": model_text,
+                    "content": prepare_for_model(tool_name, result),
                 }
             )
 
@@ -1575,138 +1589,6 @@ async def _stream_openai(
             + tool_results_for_next
         )
 
-    yield {"type": "done"}
-
-
-# ---------------------------------------------------------------------------
-# Demo chat — pre-scripted SSE stream, no API key required
-# ---------------------------------------------------------------------------
-
-
-async def _demo_chat_stream(message: str) -> AsyncIterator[dict]:
-    """Yield scripted SSE events that look like a real investigation."""
-
-    async def stream_text(text: str) -> AsyncIterator[dict]:
-        words = text.split(" ")
-        for i, word in enumerate(words):
-            chunk = word if i == len(words) - 1 else word + " "
-            yield {"type": "text", "content": chunk}
-            await asyncio.sleep(0.03)
-
-    msg_lower = message.lower()
-
-    # --- tools / availability query ---
-    if any(kw in msg_lower for kw in ("tool", "available", "what can")):
-        lines = [
-            "I have **16 OSINT tools** available for investigations:\n\n",
-            "**Identity:** `search_email`, `search_username`, `search_breach`\n\n",
-            "**Network:** `search_ip`, `search_whois`, `search_domain`, `search_ip2location`, `search_abuseipdb`\n\n",
-            "**Recon:** `generate_dorks`, `search_paste`, `search_phone`, `search_shodan`, `search_virustotal`, `search_censys`, `search_dns`, `search_github`\n\n",
-            "Just give me a target — email address, username, domain, or IP.",
-        ]
-        for line in lines:
-            async for event in stream_text(line):
-                yield event
-        yield {"type": "done"}
-        return
-
-    # --- email investigation ---
-    email_match = EMAIL_FIND_RE.search(message)
-    if email_match or any(kw in msg_lower for kw in ("email", "investigate", "@")):
-        email = email_match.group(0) if email_match else "demo@example.com"
-        async for event in stream_text(f"Investigating **{email}**...\n\n"):
-            yield event
-
-        yield {"type": "tool_start", "tool": "search_email", "input": email}
-        await asyncio.sleep(1.5)
-        yield {
-            "type": "tool_result",
-            "tool": "search_email",
-            "output": (
-                "[+] Spotify       https://open.spotify.com/user/demo\n"
-                "[+] GitHub        https://github.com/demo\n"
-                "[+] Gravatar      https://gravatar.com/demo\n"
-                "[+] WordPress     https://wordpress.com/demo\n"
-                "[*] Holehe scan complete — 4 accounts found"
-            ),
-            "elapsed": 1.4,
-        }
-
-        yield {"type": "tool_start", "tool": "search_breach", "input": email}
-        await asyncio.sleep(1.2)
-        yield {
-            "type": "tool_result",
-            "tool": "search_breach",
-            "output": (
-                "[!] LinkedIn (2016-05-17) — Passwords, Email addresses\n"
-                "[!] Adobe (2013-10-04) — Passwords, Email addresses, Usernames\n"
-                "[*] 2 breach(es) found via HaveIBeenPwned"
-            ),
-            "elapsed": 1.1,
-        }
-
-        summary = (
-            f"## Summary\n\nTarget **{email}** has accounts on **4 platforms** "
-            "and appears in **2 known data breaches** (LinkedIn 2016, Adobe 2013). "
-            "Credential rotation strongly advised."
-        )
-        async for event in stream_text(summary):
-            yield event
-        yield {"type": "done"}
-        return
-
-    # --- IP investigation ---
-    ip_match = re.search(r"\b(\d{1,3}\.){3}\d{1,3}\b", message)
-    if ip_match or "ip" in msg_lower:
-        ip = ip_match.group(0) if ip_match else "8.8.8.8"
-
-        yield {"type": "tool_start", "tool": "search_ip", "input": ip}
-        await asyncio.sleep(1.0)
-        yield {
-            "type": "tool_result",
-            "tool": "search_ip",
-            "output": (
-                f"[+] IP: {ip}\n"
-                "[+] Hostname: dns.google\n"
-                "[+] Country: US — Mountain View, California\n"
-                "[+] Org: AS15169 Google LLC\n"
-                "[+] Timezone: America/Los_Angeles"
-            ),
-            "elapsed": 0.9,
-        }
-
-        yield {"type": "tool_start", "tool": "search_whois", "input": ip}
-        await asyncio.sleep(0.8)
-        yield {
-            "type": "tool_result",
-            "tool": "search_whois",
-            "output": (
-                "[+] IP Range: 8.8.8.0/24\n"
-                "[+] Owner: Google LLC\n"
-                "[+] Abuse: network-abuse@google.com\n"
-                "[+] Country: US\n"
-                "[+] Registered: 2014-03-14"
-            ),
-            "elapsed": 0.7,
-        }
-
-        summary = (
-            f"**{ip}** is a Google public DNS server located in Mountain View, "
-            "California. Owned by Google LLC (AS15169). No threat indicators found."
-        )
-        async for event in stream_text(summary):
-            yield event
-        yield {"type": "done"}
-        return
-
-    # --- default ---
-    default_msg = (
-        "I can help you investigate **emails**, **usernames**, **domains**, "
-        "and **IP addresses** using 16 specialized OSINT tools. "
-        "What would you like to look into?"
-    )
-    async for event in stream_text(default_msg):
-        yield event
     yield {"type": "done"}
 
 
@@ -1966,11 +1848,15 @@ def create_app(host: str | None = None, port: int | None = None) -> FastAPI:
                 status_code=404,
             )
 
-        if not is_tool_enabled(tool_name):
+        # Only the browser chat's agent loop calls this route, so every call here was
+        # chosen by a model: authorise (and, below, execute) it as model-selected.
+        with model_selected():
+            refused = None if is_tool_enabled(tool_name) else disabled_result(tool_name)
+        if refused is not None:
             return JSONResponse(
                 {
-                    "status": "disabled_in_passive_mode",
-                    "output": disabled_result(tool_name),
+                    "status": json.loads(refused)["status"],
+                    "output": refused,
                     "tool": tool_name,
                     "elapsed": 0,
                 },
@@ -2061,7 +1947,10 @@ def create_app(host: str | None = None, port: int | None = None) -> FastAPI:
         start = time.monotonic()
         try:
             extra = {"bbox": req.bbox} if tool_name == "search_gdelt_geo" and req.bbox else {}
-            result = await _RUNNERS[tool_name](req.input, req.timeout, req.api_keys or {}, **extra)
+            with model_selected():
+                result = await _RUNNERS[tool_name](
+                    req.input, req.timeout, req.api_keys or {}, **extra
+                )
             elapsed = round(time.monotonic() - start, 2)
             return {"status": "ok", "output": result, "tool": tool_name, "elapsed": elapsed}
         except Exception as exc:
@@ -2413,26 +2302,6 @@ def create_app(host: str | None = None, port: int | None = None) -> FastAPI:
             "config_path": str(config_path()) if can_save else None,
             "keys": fields,
         }
-
-    # ------------------------------------------------------------------
-    # POST /api/demo/chat  — pre-scripted demo stream, no API key needed
-    # ------------------------------------------------------------------
-
-    # TODO: /api/demo/chat is currently unwired from the UI — decide wire-or-delete post-deploy
-    @app.post("/api/demo/chat")
-    async def demo_chat(req: ChatRequest):
-        async def generate():
-            async for event in _demo_chat_stream(req.message):
-                yield f"data: {json.dumps(event)}\n\n"
-
-        return StreamingResponse(
-            generate(),
-            media_type="text/event-stream",
-            headers={
-                "Cache-Control": "no-cache",
-                "X-Accel-Buffering": "no",
-            },
-        )
 
     # ------------------------------------------------------------------
     # Graph routes — read the LOCAL SQLite graph store only. No outbound

@@ -13,7 +13,7 @@ import logging
 from openosint.proxy import get_subprocess_env
 from openosint.tool_policy import requires_active
 from openosint.tools.exceptions import OSINTError, ToolExecutionError
-from openosint.utils import run_subprocess
+from openosint.utils import run_subprocess, validate_cli_target
 
 logger = logging.getLogger(__name__)
 
@@ -24,6 +24,7 @@ _INSTALL_HINT = "Download from: https://github.com/sundowndev/phoneinfoga/releas
 
 async def _run_phoneinfoga(phone: str, timeout_seconds: int) -> str:
     """Execute phoneinfoga against phone and return raw stdout."""
+    phone = validate_cli_target(phone, "phone number")
     result = await run_subprocess(
         binary=_BINARY,
         args=["scan", "-n", phone],

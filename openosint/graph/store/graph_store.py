@@ -31,6 +31,7 @@ from openosint.graph.store.neighbors import NeighborCandidate, NeighborResult
 from openosint.graph.store.resolutions import Resolution
 from openosint.graph.store.schema import SCHEMA_SQL
 from openosint.graph.store.tombstone import ErasureTombstone, make_tombstone
+from openosint.paths import create_private_file
 
 _MAX_DEPTH_CEILING = 5
 _DEFAULT_FANOUT_CAP = 50
@@ -40,6 +41,11 @@ class GraphStore:
     """Append-only SQLite store for FtM statements, provenance, bridge links, and resolutions."""
 
     def __init__(self, db_path: str | Path) -> None:
+        # A new database file is created owner-only (0600) before SQLite opens it; its
+        # -wal/-shm/journal files inherit that mode. Existing files keep their mode;
+        # :memory: and a missing parent directory are left to SQLite as before.
+        if str(db_path) != ":memory:" and Path(db_path).parent.is_dir():
+            create_private_file(Path(db_path))
         self._conn = sqlite3.connect(str(db_path))
         self._conn.row_factory = sqlite3.Row
         self._conn.execute("PRAGMA journal_mode=WAL")

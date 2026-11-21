@@ -15,7 +15,7 @@ from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any
 
-from openosint.paths import home_dir
+from openosint.paths import create_private_file, ensure_private_dir, home_dir
 
 logger = logging.getLogger(__name__)
 
@@ -34,7 +34,8 @@ class SessionRecord:
 
 
 def _ensure_dir() -> None:
-    HISTORY_DIR.mkdir(parents=True, exist_ok=True)
+    # Owner-only when created: sessions hold the prompts and targets you investigated.
+    ensure_private_dir(HISTORY_DIR)
 
 
 def save_session(record: SessionRecord) -> Path:
@@ -42,6 +43,7 @@ def save_session(record: SessionRecord) -> Path:
     _ensure_dir()
     safe_ts = record.timestamp.replace(":", "-")
     path = HISTORY_DIR / f"{safe_ts}_session.json"
+    create_private_file(path)  # 0600 when new; an existing file keeps its mode
     path.write_text(json.dumps(asdict(record), indent=2), encoding="utf-8")
 
     all_files = sorted(HISTORY_DIR.glob("*_session.json"))

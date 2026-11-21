@@ -54,7 +54,12 @@ def test_documented_env_vars_exist_in_the_code():
     documented = set()
     for page in (ROOT / "docs" / "docs").rglob("index.html"):
         documented |= set(re.findall(r"\b(?:OPENOSINT|ANTHROPIC|OPENAI)_[A-Z0-9_]+\b", page.read_text(encoding="utf-8")))
-    missing = sorted(name for name in documented if name not in source)
+    # Read by the shell in the skill commands (the fork checkout path), not by Python code.
+    # Kept exempt only while the skills really use it.
+    shell_only = {"OPENOSINT_SRC"}
+    skills = "\n".join(p.read_text(encoding="utf-8") for p in (ROOT / "skills").rglob("*.md"))
+    assert all(f"${{{name}:?}}" in skills for name in shell_only)
+    missing = sorted(name for name in documented - shell_only if name not in source)
     assert not missing, f"documented but not in the code: {missing}"
 
 

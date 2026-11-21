@@ -13,7 +13,7 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
-from openosint.paths import home_dir
+from openosint.paths import ensure_private_dir, home_dir
 
 
 def default_db_path() -> Path:
@@ -25,5 +25,5 @@ def default_db_path() -> Path:
     """
     override = os.environ.get("OPENOSINT_GRAPH_DB")
     path = Path(override) if override else home_dir() / "graph.db"
-    path.parent.mkdir(parents=True, exist_ok=True)
+    ensure_private_dir(path.parent)  # owner-only when created; existing dirs untouched
     return path

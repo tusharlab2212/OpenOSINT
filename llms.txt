@@ -2,9 +2,10 @@
 > The OSINT toolkit for AI agents: Agent Skill, MCP server and CLI. Passive by default, no API keys needed to start, and every finding cites the tool call that produced it.
 
 ## Agent Skill and Claude Code plugin
-Requires [uv](https://docs.astral.sh/uv/getting-started/installation/). No API keys for the default flow.
-- Claude Code plugin (skills + passive MCP server): `/plugin marketplace add OpenOSINT/OpenOSINT`, `/plugin install openosint@openosint`, then `/openosint:osint example.com`
-- Any Agent Skills client (Codex, Gemini CLI, Cursor, ...): `npx skills add OpenOSINT/OpenOSINT`, then `/osint example.com`
+This repository is a security-hardened fork of OpenOSINT. Run it from a local checkout of this fork: `uvx openosint`, `uvx --from openosint ...`, `pip install openosint`, the `OpenOSINT/OpenOSINT` marketplace and `npx skills add OpenOSINT/OpenOSINT` install the upstream release, which lacks this fork's changes (e.g. `--allow-active-agent`).
+Requires [uv](https://docs.astral.sh/uv/getting-started/installation/) and a checkout of this fork whose absolute path is in `OPENOSINT_SRC`. No API keys for the default flow.
+- Claude Code plugin (skills; add the MCP server separately): `/plugin marketplace add tusharlab2212/OpenOSINT`, `/plugin install openosint@openosint`, then `/openosint:osint example.com`
+- Any Agent Skills client (Codex, Gemini CLI, Cursor, ...): `npx skills add tusharlab2212/OpenOSINT`, then `/osint example.com`
 - Skills: `osint` (passive recon of a domain, IP or organization) and `exposure` (A-F external exposure grade). Passive only; every finding cites its tool call.
 - Keyless CLI commands the skills use: `exposure`, `dns`, `rdap`, `whois`, `ip`, `gdelt`, `dorks`.
 
@@ -12,16 +13,16 @@ Requires [uv](https://docs.astral.sh/uv/getting-started/installation/). No API k
 OpenOSINT is a modular OSINT framework that exposes 21 intelligence-gathering tools to large language models via the Model Context Protocol (MCP). It also operates as a standalone CLI, interactive REPL, and browser Web UI for direct human use. No LLM is embedded — OpenOSINT provides the tool surface that an MCP-compatible client (e.g. Claude Code, Claude Desktop) drives autonomously.
 
 ## Installation
-- PyPI: `pip install openosint`
-- Source: `git clone https://github.com/OpenOSINT/OpenOSINT.git && pip install -e .`
+- This fork, from source: `git clone https://github.com/tusharlab2212/OpenOSINT && cd OpenOSINT && uv run --locked openosint web` (dependencies from `uv.lock`), or `pip install -e .` in the checkout
+- Upstream release (not this fork): `pip install openosint`
 - Python 3.10+ required
 
 ## Claude Code MCP setup
-Requires [uv](https://docs.astral.sh/uv/getting-started/installation/). Passive tools only (20) by default; add `--allow-active` for all 25.
-`claude mcp add openosint -- uvx --from openosint openosint-mcp`
-With a key: `claude mcp add openosint -e SHODAN_API_KEY=your-key -- uvx --from openosint openosint-mcp`
-Optional, enables active tools (noisy; see README "Passive by default"): append `--allow-active` or set OPENOSINT_ALLOW_ACTIVE=1
-Claude Desktop / Cursor: `{"mcpServers": {"openosint": {"command": "uvx", "args": ["--from", "openosint", "openosint-mcp"], "env": {}}}}`
+Requires [uv](https://docs.astral.sh/uv/getting-started/installation/). Passive tools only (20) by default; add `--allow-active --allow-active-agent` for all 25.
+`claude mcp add openosint -- uv run --locked --project /absolute/path/to/OpenOSINT openosint-mcp`
+With a key: `claude mcp add openosint -e SHODAN_API_KEY=your-key -- uv run --locked --project /absolute/path/to/OpenOSINT openosint-mcp`
+Optional, enables active tools (noisy; see README "Passive by default"): append `--allow-active --allow-active-agent`, or set OPENOSINT_ALLOW_ACTIVE=1 and OPENOSINT_ALLOW_ACTIVE_AGENT=1. Both are required: every MCP call is chosen by the client's model.
+Claude Desktop / Cursor: `{"mcpServers": {"openosint": {"command": "uv", "args": ["run", "--locked", "--project", "/absolute/path/to/OpenOSINT", "openosint-mcp"], "env": {}}}}`
 
 ## Available MCP tools (20)
 - `search_email` — enumerate online services registered against an email address (via holehe)

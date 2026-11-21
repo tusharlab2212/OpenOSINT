@@ -2,16 +2,16 @@
 name: exposure
 description: Grade a domain's external exposure A-F with OpenOSINT (email authentication, TLS, domain registration, security headers). Use when the user asks for an exposure check, security posture, email-spoofing or DMARC/SPF check, or "how exposed is this domain". No API key needed.
 license: MIT
-compatibility: Needs uv (for `uvx`) and network access.
+compatibility: Needs uv, a local checkout of this OpenOSINT fork (its absolute path in OPENOSINT_SRC) and network access.
 argument-hint: "<domain>"
 ---
 
 # OpenOSINT: exposure report
 
-Domain: $ARGUMENTS (ask for one if empty). Only run this on domains the user owns or is authorized to assess.
+Domain: $ARGUMENTS (ask for one if empty). Only run this on domains the user owns or is authorized to assess. The command runs this fork from the user's local checkout (`OPENOSINT_SRC`, absolute path); if it is not set, ask for it. Do not substitute `uvx openosint`, which installs the upstream PyPI release instead.
 
 ```bash
-uvx --from openosint==2.38.2 openosint --json exposure DOMAIN
+uv run --locked --project "${OPENOSINT_SRC:?}" openosint --json exposure DOMAIN
 ```
 
 - The TLS and header checks connect to the domain on port 443. If the user wants no contact with the target, run `exposure DOMAIN --checks email,registration` instead (DNS and registry only; the result is not graded).

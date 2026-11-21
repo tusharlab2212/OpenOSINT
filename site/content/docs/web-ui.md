@@ -14,7 +14,7 @@ The web UI is a local browser app. It starts without any API key; keyless tools 
 openosint web
 ```
 
-Or without installing: `uvx openosint web`. The server prints its address and opens your browser. By default it listens on `http://127.0.0.1:8080/`.
+Or from a checkout of this fork, without installing: `uv run --locked openosint web` (`uvx openosint web` would run the upstream release). The server prints its address and opens your browser. By default it listens on `http://127.0.0.1:8080/`.
 
 | Option | Effect |
 |---|---|
@@ -41,7 +41,7 @@ Open Settings and pick one:
 
 Settings can also save tool keys on this computer. They go to `config.env` in the data directory (`~/.openosint/`, or `$OPENOSINT_HOME`), never into the installed package. Values are not logged or sent back to the browser. See [Configuration](/docs/configuration/).
 
-Active tools are off by default. On a local install, Settings has an "Enable active tools" switch; a public or demo instance can never enable them. See [Safety](/docs/safety/).
+Active tools are off by default. On a local install, Settings has an "Enable active tools" switch; a public or demo instance can never enable them. Every tool the web UI runs is chosen by the chat model, so the switch alone is not enough: the server also needs `OPENOSINT_ALLOW_ACTIVE_AGENT=1` in its environment, which has no switch in Settings. Without it the chat gets `blocked_for_model` for an active tool. See [Safety](/docs/safety/#tools-chosen-by-an-ai-model).
 
 ## Reaching it by another name
 
@@ -66,6 +66,8 @@ docker compose up --build
 ```
 
 The container publishes `127.0.0.1:8080` only. A browser reaches the container over the Docker network, so it cannot save keys by default. Set the keys in your compose environment or `.env`, or set `OPENOSINT_SETUP_TOKEN` to a long random string and enter it in the UI's key panel.
+
+The `.env` next to `docker-compose.yml` is passed in by Compose (`env_file:`) as real environment variables, so every variable in it applies, `OPENOSINT_ALLOW_ACTIVE` included. A `.env` placed in the data volume (`/data/.env`) is different: the container reads it as a file, and the variables a file may not set, such as `OPENOSINT_ALLOW_ACTIVE` or the proxy variables, are ignored there. See [What a file may not set](/docs/configuration/#what-a-file-may-not-set).
 
 ## Files it writes
 

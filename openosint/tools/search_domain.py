@@ -13,7 +13,12 @@ import logging
 from openosint.proxy import get_subprocess_env
 from openosint.tool_policy import requires_active
 from openosint.tools.exceptions import OSINTError
-from openosint.utils import attribution_line, run_subprocess, strip_promotions
+from openosint.utils import (
+    attribution_line,
+    run_subprocess,
+    strip_promotions,
+    validate_cli_target,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -24,6 +29,7 @@ _INSTALL_HINT = "Install it with: uv tool install sublist3r (or: pip install sub
 
 async def _run_sublist3r(domain: str, timeout_seconds: int) -> str:
     """Execute sublist3r against domain and return raw stdout."""
+    domain = validate_cli_target(domain, "domain")
     result = await run_subprocess(
         binary=_BINARY,
         args=["-d", domain, "-n"],

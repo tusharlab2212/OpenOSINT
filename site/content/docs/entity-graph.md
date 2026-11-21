@@ -20,7 +20,7 @@ A second, additive module keeps a durable graph on your disk, modelled with [Fol
 - an append-only store;
 - non-destructive same-entity suggestions and a human review queue. Nothing is merged automatically.
 
-It works in a plain `uvx openosint web` install, with no compiler and no extra:
+It works in a plain install (`uv run --locked openosint web` from a checkout), with no compiler and no extra:
 
 | Surface | What it gives you |
 |---|---|
