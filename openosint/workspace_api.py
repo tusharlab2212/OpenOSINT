@@ -15,10 +15,11 @@ from pathlib import Path
 from typing import Literal, Optional
 
 from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, Response
 from pydantic import BaseModel, ConfigDict, Field
 
 from openosint import workspace as ws
+from openosint import workspace_report as report
 from openosint.workspace import WorkspaceError, WorkspaceStore
 
 _URL = Field(default=None, max_length=ws.URL_MAX)
@@ -232,6 +233,42 @@ def register_workspace_routes(
     async def trace_finding(request: Request, inv_id: str, item_id: str):
         _check(request)
         return await _run(lambda s: s.trace_finding(inv_id, item_id))
+
+    @app.get("/api/investigations/{inv_id}/report")
+    async def investigation_report(
+        request: Request,
+        inv_id: str,
+        format: str = "html",
+        sections: Optional[str] = None,
+        title: Optional[str] = None,
+        subtitle: Optional[str] = None,
+        download: bool = False,
+    ):
+        """An HTML or PDF report built from the investigation's records, locally."""
+        _check(request)
+        if format not in report.FORMATS:
+            raise HTTPException(422, f"format must be one of: {', '.join(report.FORMATS)}")
+        try:
+            options = report.parse_options(sections, title, subtitle)
+        except WorkspaceError as exc:
+            raise HTTPException(exc.status, str(exc)) from None
+        data = await _run(lambda s: s.get_workspace(inv_id))
+        model = report.build_report(data, options)
+        name = report.report_filename(model["title"], format)
+        headers = {
+            "Cache-Control": "no-store",
+            "X-Content-Type-Options": "nosniff",
+            "Referrer-Policy": "no-referrer",
+        }
+        if format == "pdf":
+            body = await asyncio.to_thread(report.render_pdf, model)
+            headers["Content-Disposition"] = f'attachment; filename="{name}"'
+            return Response(body, media_type="application/pdf", headers=headers)
+        headers["Content-Security-Policy"] = report.CSP
+        headers["Content-Disposition"] = (
+            f'{"attachment" if download else "inline"}; filename="{name}"'
+        )
+        return HTMLResponse(report.render_html(model), headers=headers)
 
     @app.get("/api/investigations/{inv_id}/relationships/{item_id}/trace")
     async def trace_relationship(request: Request, inv_id: str, item_id: str):
