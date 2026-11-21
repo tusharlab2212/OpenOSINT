@@ -126,8 +126,31 @@
   .rel-table h3{font-size:13px;margin:0 0 6px}
   .rel-table ul{margin:0;padding-left:18px}
   .rel-table li{margin:4px 0;word-break:break-word}
+  .filters{display:flex;flex-wrap:wrap;gap:8px 12px;align-items:flex-end;margin:6px 0 12px}
+  .filter{display:flex;flex-direction:column;gap:3px;font-size:12px;color:var(--muted)}
+  .filter.check{flex-direction:row;align-items:center;gap:6px;padding-bottom:7px}
+  .timeline-list{border:1px solid var(--border);border-radius:8px;padding:8px 10px;max-height:640px;overflow-y:auto;min-width:0}
+  .timeline-list h4.month{margin:12px 0 4px;font-size:12px;color:var(--muted);font-family:var(--mono)}
+  .event-row{display:flex;align-items:flex-start;gap:8px;padding:4px 0;border-bottom:1px dashed #30363d80}
+  .event-row input{margin-top:9px}
+  .event-row.selected .event-main{border-color:var(--accent)}
+  .event-main{flex:1;min-width:0;display:flex;flex-direction:column;align-items:flex-start;gap:2px;text-align:left;background:var(--bg)}
+  .event-date{font-family:var(--mono);font-size:12px;color:var(--accent)}
+  .event-date.approximate{color:var(--warn)}
+  .event-date.range{color:var(--purple)}
+  .event-title{font-weight:600;word-break:break-word}
+  .prov.hypothesis{border-style:dashed}
+  ol.chronology{margin:4px 0;padding-left:20px}
+  ol.chronology li{margin:4px 0;word-break:break-word}
+  .gap{font-style:italic}
+  .compare-wrap{overflow-x:auto;margin-top:8px}
+  table.compare{border-collapse:collapse;font-size:12px;min-width:100%}
+  table.compare th,table.compare td{border:1px solid var(--border);padding:4px 6px;text-align:left;vertical-align:top;word-break:break-word}
+  table.compare thead th{color:var(--text)}
+  table.compare tbody th{color:var(--muted);font-weight:500}
   @media (max-width:760px){
     .graph-layout{grid-template-columns:1fr}
+    .timeline-list{max-height:none}
     .graph-canvas{height:60vh}
     .graph-detail{max-height:none}
     main{display:block;overflow-y:auto}

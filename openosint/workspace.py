@@ -15,14 +15,15 @@ from __future__ import annotations
 import re
 import sqlite3
 import uuid
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from openosint.paths import create_private_file, ensure_private_dir, home_dir
 
 DB_FILENAME = "workspace.db"
-SCHEMA_VERSION = 3
+SCHEMA_VERSION = 4
 
 TARGET_KINDS = ("username", "domain", "email", "url", "ip", "phone", "other")
 CONFIDENCE_LEVELS = ("low", "medium", "high")
@@ -79,6 +80,40 @@ RELATIONSHIP_PRESETS = (
     "located in",
 )
 POSITION_LIMIT = 1_000_000.0
+
+# Timeline (schema 4). Events and correlations are entered by the investigator; nothing
+# dates, orders, links or correlates events on its own, and nothing marks one verified.
+EVENT_CATEGORIES = (
+    "communication",
+    "registration",
+    "publication",
+    "account_activity",
+    "infrastructure_change",
+    "transaction",
+    "meeting",
+    "travel",
+    "legal",
+    "other",
+)
+# Where an event comes from. There is no "verified": the strongest statement is that the
+# investigator observed it in a source themselves.
+EVENT_PROVENANCE = ("reported", "observation", "hypothesis", "conclusion")
+# exact: the date (and time) as given; approximate: around then (year or month allowed);
+# range: from start to end.
+DATE_PRECISIONS = ("exact", "approximate", "range")
+# What an event can be linked to (kind -> table).
+EVENT_LINK_KINDS = {
+    "target": "targets",
+    "entity": "entities",
+    "finding": "findings",
+    "evidence": "evidence",
+    "source": "sources",
+}
+CORRELATION_STATUSES = ("hypothesis", "documented")
+MAX_LINKS = 100
+_TIME_RE = re.compile(r"^([01]\d|2[0-3]):[0-5]\d$")
+_OFFSET_RE = re.compile(r"^(?:UTC)?([+-])(0\d|1[0-4]):([0-5]\d)$")
+_PARTIAL_DATE_RE = re.compile(r"^\d{4}(-\d{2}(-\d{2})?)?$")
 
 RELIABILITY_LABELS = {
     "unassessed": "Not assessed",
@@ -211,6 +246,57 @@ CREATE TABLE IF NOT EXISTS relationship_evidence (
 CREATE INDEX IF NOT EXISTS idx_entities_inv ON entities(investigation_id);
 CREATE INDEX IF NOT EXISTS idx_relationships_inv ON relationships(investigation_id);
 CREATE INDEX IF NOT EXISTS idx_rel_evidence_ev ON relationship_evidence(evidence_id);
+CREATE TABLE IF NOT EXISTS events (
+    id TEXT PRIMARY KEY,
+    investigation_id TEXT NOT NULL REFERENCES investigations(id) ON DELETE CASCADE,
+    title TEXT NOT NULL,
+    description TEXT NOT NULL DEFAULT '',
+    category TEXT NOT NULL DEFAULT 'other',
+    provenance TEXT NOT NULL DEFAULT 'hypothesis',
+    date_precision TEXT NOT NULL DEFAULT 'exact',
+    start_date TEXT NOT NULL,
+    start_time TEXT NOT NULL DEFAULT '',
+    end_date TEXT NOT NULL DEFAULT '',
+    end_time TEXT NOT NULL DEFAULT '',
+    timezone TEXT NOT NULL DEFAULT '',
+    sort_key TEXT NOT NULL,
+    notes TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS event_links (
+    event_id TEXT NOT NULL REFERENCES events(id) ON DELETE CASCADE,
+    kind TEXT NOT NULL,
+    item_id TEXT NOT NULL,
+    PRIMARY KEY (event_id, kind, item_id)
+);
+CREATE TABLE IF NOT EXISTS correlations (
+    id TEXT PRIMARY KEY,
+    investigation_id TEXT NOT NULL REFERENCES investigations(id) ON DELETE CASCADE,
+    title TEXT NOT NULL,
+    explanation TEXT NOT NULL DEFAULT '',
+    status TEXT NOT NULL DEFAULT 'hypothesis',
+    confidence TEXT NOT NULL DEFAULT 'low',
+    finding_id TEXT REFERENCES findings(id) ON DELETE SET NULL,
+    notes TEXT NOT NULL DEFAULT '',
+    recorded_by TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS correlation_events (
+    correlation_id TEXT NOT NULL REFERENCES correlations(id) ON DELETE CASCADE,
+    event_id TEXT NOT NULL REFERENCES events(id) ON DELETE CASCADE,
+    PRIMARY KEY (correlation_id, event_id)
+);
+CREATE TABLE IF NOT EXISTS correlation_evidence (
+    correlation_id TEXT NOT NULL REFERENCES correlations(id) ON DELETE CASCADE,
+    evidence_id TEXT NOT NULL REFERENCES evidence(id) ON DELETE CASCADE,
+    PRIMARY KEY (correlation_id, evidence_id)
+);
+CREATE INDEX IF NOT EXISTS idx_events_inv ON events(investigation_id, sort_key);
+CREATE INDEX IF NOT EXISTS idx_event_links_item ON event_links(item_id);
+CREATE INDEX IF NOT EXISTS idx_correlations_inv ON correlations(investigation_id);
+CREATE INDEX IF NOT EXISTS idx_corr_events_ev ON correlation_events(event_id);
 """
 
 # Columns added in schema 2. A schema-1 database gets them with their defaults; every
@@ -230,7 +316,9 @@ _V2_COLUMNS = (
 SECTIONS = ("targets", "sources", "findings", "notes", "evidence")
 # The graph's sections (schema 3). Kept apart so investigation counts stay as they were.
 GRAPH_SECTIONS = ("entities", "relationships")
-ALL_SECTIONS = SECTIONS + GRAPH_SECTIONS
+# The timeline's sections (schema 4).
+TIMELINE_SECTIONS = ("events", "correlations")
+ALL_SECTIONS = SECTIONS + GRAPH_SECTIONS + TIMELINE_SECTIONS
 
 
 class WorkspaceError(Exception):
@@ -515,7 +603,81 @@ class WorkspaceStore:
             e["relationship_ids"] = [
                 r["id"] for r in inv["relationships"] if e["id"] in r["evidence_ids"]
             ]
+        self._add_timeline(inv)
         return inv
+
+    def _add_timeline(self, inv: dict) -> None:
+        """Events (chronological) with their resolved links, and correlations."""
+        q = self._conn.execute
+        inv_id = inv["id"]
+        inv["events"] = [
+            dict(r)
+            for r in q(
+                "SELECT * FROM events WHERE investigation_id = ? "
+                "ORDER BY sort_key, created_at, rowid",
+                (inv_id,),
+            )
+        ]
+        labels = {
+            "target": {t["id"]: f"{t['kind']}: {t['value']}" for t in inv["targets"]},
+            "entity": {e["id"]: e["label"] for e in inv["entities"]},
+            "finding": {f["id"]: f["title"] for f in inv["findings"]},
+            "evidence": {e["id"]: e["description"][:120] for e in inv["evidence"]},
+            "source": {s["id"]: s["title"] or s["url"] for s in inv["sources"]},
+        }
+        links: dict[str, list[dict]] = {}
+        for row in q(
+            "SELECT l.event_id, l.kind, l.item_id FROM event_links l "
+            "JOIN events ev ON ev.id = l.event_id WHERE ev.investigation_id = ? "
+            "ORDER BY l.kind, l.rowid",
+            (inv_id,),
+        ):
+            label = labels.get(row["kind"], {}).get(row["item_id"])
+            if label is not None:  # a link to a deleted item is not shown
+                links.setdefault(row["event_id"], []).append(
+                    {"kind": row["kind"], "id": row["item_id"], "label": label}
+                )
+        for ev in inv["events"]:
+            ev["links"] = links.get(ev["id"], [])
+        inv["correlations"] = [
+            dict(r)
+            for r in q(
+                "SELECT c.*, f.title AS finding_title FROM correlations c "
+                "LEFT JOIN findings f ON f.id = c.finding_id "
+                "WHERE c.investigation_id = ? ORDER BY c.created_at, c.rowid",
+                (inv_id,),
+            )
+        ]
+        order = {ev["id"]: i for i, ev in enumerate(inv["events"])}
+        evidence = {e["id"] for e in inv["evidence"]}
+        members: dict[str, list[str]] = {}
+        cited: dict[str, list[str]] = {}
+        for row in q(
+            "SELECT ce.correlation_id, ce.event_id FROM correlation_events ce "
+            "JOIN correlations c ON c.id = ce.correlation_id WHERE c.investigation_id = ?",
+            (inv_id,),
+        ):
+            members.setdefault(row["correlation_id"], []).append(row["event_id"])
+        for row in q(
+            "SELECT ce.correlation_id, ce.evidence_id FROM correlation_evidence ce "
+            "JOIN correlations c ON c.id = ce.correlation_id WHERE c.investigation_id = ?",
+            (inv_id,),
+        ):
+            cited.setdefault(row["correlation_id"], []).append(row["evidence_id"])
+        for c in inv["correlations"]:
+            c["event_ids"] = sorted(
+                (i for i in members.get(c["id"], []) if i in order), key=order.__getitem__
+            )
+            c["evidence_ids"] = [i for i in cited.get(c["id"], []) if i in evidence]
+            # Flags, never silent changes: the investigator decides what the correlation is now.
+            c["incomplete"] = len(c["event_ids"]) < 2
+            c["unsupported"] = (
+                c["status"] == "documented" and not c["finding_id"] and not c["evidence_ids"]
+            )
+        for ev in inv["events"]:
+            ev["correlation_ids"] = [
+                c["id"] for c in inv["correlations"] if ev["id"] in c["event_ids"]
+            ]
 
     def trace_relationship(self, inv_id: str, relationship_id: str) -> dict:
         """A relationship with its two entities, its finding and its evidence (with sources)."""
@@ -587,6 +749,7 @@ class WorkspaceStore:
         self.get_investigation(inv_id)
         values = self._validated(inv_id, section, data, partial=False)
         evidence_ids = values.pop("_evidence_ids", None)
+        link_sets = values.pop("_links", None)
         item_id, now = uuid.uuid4().hex, _now()
         values.update(id=item_id, investigation_id=inv_id, created_at=now, updated_at=now)
         cols = ", ".join(values)
@@ -600,6 +763,7 @@ class WorkspaceStore:
                 raise self._conflict(section) from exc
             if evidence_ids is not None:
                 self._set_relationship_evidence(item_id, evidence_ids)
+            self._write_links(item_id, link_sets)
             self._touch(inv_id, now)
         return self.get_item(inv_id, section, item_id)
 
@@ -607,6 +771,7 @@ class WorkspaceStore:
         self.get_item(inv_id, section, item_id)
         values = self._validated(inv_id, section, data, partial=True, item_id=item_id)
         evidence_ids = values.pop("_evidence_ids", None)
+        link_sets = values.pop("_links", None)
         with self._conn:
             try:
                 self._update_row(section, item_id, values)
@@ -614,6 +779,7 @@ class WorkspaceStore:
                 raise self._conflict(section) from exc
             if evidence_ids is not None:
                 self._set_relationship_evidence(item_id, evidence_ids)
+            self._write_links(item_id, link_sets)
             self._touch(inv_id, _now())
         return self.get_item(inv_id, section, item_id)
 
@@ -636,10 +802,26 @@ class WorkspaceStore:
             [(relationship_id, e) for e in evidence_ids],
         )
 
+    def _write_links(self, owner_id: str, link_sets: list | None) -> None:
+        """Replace link rows: each set is (table, owner column, value columns, rows)."""
+        for table, owner_col, cols, rows in link_sets or ():
+            self._conn.execute(f"DELETE FROM {table} WHERE {owner_col} = ?", (owner_id,))
+            marks = ", ".join("?" for _ in range(len(cols) + 1))
+            self._conn.executemany(
+                f"INSERT INTO {table} ({owner_col}, {', '.join(cols)}) VALUES ({marks})",
+                [(owner_id, *row) for row in rows],
+            )
+
     def delete_item(self, inv_id: str, section: str, item_id: str) -> None:
         self.get_item(inv_id, section, item_id)
         with self._conn:
             self._conn.execute(f"DELETE FROM {section} WHERE id = ?", (item_id,))
+            # Event links point at items of several tables, so they have no foreign key.
+            kind = next((k for k, table in EVENT_LINK_KINDS.items() if table == section), None)
+            if kind:
+                self._conn.execute(
+                    "DELETE FROM event_links WHERE kind = ? AND item_id = ?", (kind, item_id)
+                )
             self._touch(inv_id, _now())
 
     def get_item(self, inv_id: str, section: str, item_id: str) -> dict:
@@ -853,7 +1035,162 @@ class WorkspaceStore:
         elif section == "relationships":
             out.update(self._relationship(inv_id, data, partial=partial, item_id=item_id))
 
+        elif section == "events":
+            out.update(self._event(inv_id, data, partial=partial, item_id=item_id))
+
+        elif section == "correlations":
+            out.update(self._correlation(inv_id, data, partial=partial, item_id=item_id))
+
         return out
+
+    def _event(self, inv_id: str, data: dict, *, partial: bool, item_id: str) -> dict:
+        """Validate an event. The date fields are checked together, as one date."""
+        current = (
+            self._conn.execute("SELECT * FROM events WHERE id = ?", (item_id,)).fetchone()
+            if partial
+            else None
+        )
+
+        def given(key: str) -> bool:
+            return key in data or not partial
+
+        out: dict[str, Any] = {}
+        if given("title"):
+            title = _text(data.get("title"), "title", max_len=TITLE_MAX, required=True)
+            if "\n" in title or "\r" in title:
+                raise InvalidInput("title must be on one line")
+            out["title"] = title
+        for key in ("description", "notes"):
+            if given(key):
+                out[key] = _text(data.get(key), key, max_len=TEXT_MAX)
+        if given("category"):
+            out["category"] = _choice(data.get("category") or "other", "category", EVENT_CATEGORIES)
+        if given("provenance"):
+            out["provenance"] = _choice(
+                data.get("provenance") or "hypothesis", "provenance", EVENT_PROVENANCE
+            )
+        date_keys = (
+            "date_precision",
+            "start_date",
+            "start_time",
+            "end_date",
+            "end_time",
+            "timezone",
+        )
+        if not partial or any(k in data for k in date_keys):
+            merged = {
+                k: (data[k] if k in data else (current[k] if current is not None else None))
+                for k in date_keys
+            }
+            out.update(_event_dates(merged))
+        if given("links"):
+            raw = data.get("links") or []
+            if not isinstance(raw, list) or len(raw) > MAX_LINKS:
+                raise InvalidInput(f"links must be a list of at most {MAX_LINKS} items")
+            rows = []
+            for link in raw:
+                if not isinstance(link, dict):
+                    raise InvalidInput("each link needs a kind and an id")
+                kind = _choice(link.get("kind"), "link kind", tuple(EVENT_LINK_KINDS))
+                if not link.get("id"):
+                    raise InvalidInput(f"{kind} link needs an id")
+                rows.append(
+                    (kind, self._ref(inv_id, EVENT_LINK_KINDS[kind], link["id"], f"{kind} link"))
+                )
+            out["_links"] = [
+                ("event_links", "event_id", ("kind", "item_id"), list(dict.fromkeys(rows)))
+            ]
+        return out
+
+    def _correlation(self, inv_id: str, data: dict, *, partial: bool, item_id: str) -> dict:
+        """Validate a correlation: two or more events; documented only with a citation."""
+        current = (
+            self._conn.execute("SELECT * FROM correlations WHERE id = ?", (item_id,)).fetchone()
+            if partial
+            else None
+        )
+
+        def given(key: str) -> bool:
+            return key in data or not partial
+
+        out: dict[str, Any] = {}
+        links: list = []
+        if given("title"):
+            title = _text(data.get("title"), "title", max_len=TITLE_MAX, required=True)
+            if "\n" in title or "\r" in title:
+                raise InvalidInput("title must be on one line")
+            out["title"] = title
+        for key in ("explanation", "notes"):
+            if given(key):
+                out[key] = _text(data.get(key), key, max_len=TEXT_MAX)
+        if given("recorded_by"):
+            recorded_by = _text(data.get("recorded_by"), "recorded_by", max_len=TITLE_MAX)
+            if "\n" in recorded_by or "\r" in recorded_by:
+                raise InvalidInput("recorded_by must be on one line")
+            out["recorded_by"] = recorded_by
+        if given("status"):
+            out["status"] = _choice(
+                data.get("status") or "hypothesis", "status", CORRELATION_STATUSES
+            )
+        if given("confidence"):
+            out["confidence"] = _choice(
+                data.get("confidence") or "low", "confidence", CONFIDENCE_LEVELS
+            )
+        if given("finding_id"):
+            out["finding_id"] = self._ref(inv_id, "findings", data.get("finding_id"), "finding_id")
+        if given("event_ids"):
+            events = self._id_list(inv_id, "events", data.get("event_ids"), "event_ids")
+            if len(events) < 2:
+                raise InvalidInput("a correlation needs at least two events")
+            links.append(
+                ("correlation_events", "correlation_id", ("event_id",), [(e,) for e in events])
+            )
+        evidence_ids = None
+        if given("evidence_ids"):
+            evidence_ids = self._id_list(
+                inv_id, "evidence", data.get("evidence_ids"), "evidence_ids"
+            )
+            links.append(
+                (
+                    "correlation_evidence",
+                    "correlation_id",
+                    ("evidence_id",),
+                    [(e,) for e in evidence_ids],
+                )
+            )
+        if links:
+            out["_links"] = links
+
+        status = out.get("status", current["status"] if current is not None else "hypothesis")
+        finding = (
+            out["finding_id"]
+            if "finding_id" in out
+            else (current["finding_id"] if current is not None else None)
+        )
+        if evidence_ids is None:
+            evidence_ids = (
+                [
+                    r["evidence_id"]
+                    for r in self._conn.execute(
+                        "SELECT evidence_id FROM correlation_evidence WHERE correlation_id = ?",
+                        (item_id,),
+                    )
+                ]
+                if current is not None
+                else []
+            )
+        if status == "documented" and not finding and not evidence_ids:
+            raise InvalidInput(
+                "a documented correlation must cite a finding or evidence; "
+                "without one, record it as a hypothesis"
+            )
+        return out
+
+    def _id_list(self, inv_id: str, table: str, raw: Any, field: str) -> list[str]:
+        raw = raw or []
+        if not isinstance(raw, list) or len(raw) > MAX_LINKS:
+            raise InvalidInput(f"{field} must be a list of at most {MAX_LINKS} ids")
+        return list(dict.fromkeys(self._ref(inv_id, table, i, field) for i in raw))
 
     def _relationship(self, inv_id: str, data: dict, *, partial: bool, item_id: str) -> dict:
         """Validate a relationship. A documented one must cite a finding or evidence."""
@@ -964,6 +1301,89 @@ class WorkspaceStore:
         elif rating != old_rating or rationale != old_rationale or current is None:
             out["reliability_assessed_on"] = _today()
         return out
+
+
+def _zone(name: str):
+    """A tzinfo for an IANA name ("Europe/London"), "UTC" or a fixed offset ("+05:30")."""
+    if name.upper() in ("UTC", "Z"):
+        return timezone.utc
+    match = _OFFSET_RE.match(name)
+    if match:
+        sign, hours, minutes = match.groups()
+        delta = timedelta(hours=int(hours), minutes=int(minutes))
+        return timezone(delta if sign == "+" else -delta)
+    if len(name) > 64 or not re.match(r"^[A-Za-z][A-Za-z0-9_+\-/]*$", name) or ".." in name:
+        raise InvalidInput(
+            "timezone must be an IANA name (e.g. Europe/London), UTC or an offset like +05:30"
+        )
+    try:
+        return ZoneInfo(name)
+    except (ZoneInfoNotFoundError, ValueError):
+        raise InvalidInput(f"unknown timezone: {name}") from None
+
+
+def _event_dates(d: dict) -> dict:
+    """Validate an event's date fields together and compute its sort key.
+
+    Dates are kept as entered. The sort key is the start in UTC when a time and timezone
+    are given; otherwise the date (and time) as entered, with missing parts as the start
+    of the period, so events without a timezone sort by their local wall-clock time.
+    """
+    precision = _choice(d.get("date_precision") or "exact", "date_precision", DATE_PRECISIONS)
+    start = _text(d.get("start_date"), "start_date", max_len=10, required=True)
+    if precision == "approximate":
+        if not _PARTIAL_DATE_RE.match(start):
+            raise InvalidInput("start_date must be YYYY, YYYY-MM or YYYY-MM-DD")
+    elif not _DATE_RE.match(start):
+        raise InvalidInput("start_date must be a date in YYYY-MM-DD form")
+    # A partial (approximate) date sorts as the start of its year or month.
+    padded = {4: f"{start}-01-01", 7: f"{start}-01"}.get(len(start), start)
+    try:
+        date.fromisoformat(padded)
+    except ValueError:
+        raise InvalidInput("start_date is not a valid date") from None
+
+    def time_of(key: str, date_value: str) -> str:
+        value = _text(d.get(key), key, max_len=5)
+        if value and not _TIME_RE.match(value):
+            raise InvalidInput(f"{key} must be HH:MM (24-hour)")
+        if value and len(date_value) != 10:
+            raise InvalidInput(f"{key} needs a full date (YYYY-MM-DD)")
+        return value
+
+    start_time = time_of("start_time", start)
+    tz_name = _text(d.get("timezone"), "timezone", max_len=64)
+    tz = _zone(tz_name) if tz_name else None
+    if precision == "range":
+        end = _text(d.get("end_date"), "end_date", max_len=10, required=True)
+        if not _DATE_RE.match(end):
+            raise InvalidInput("end_date must be a date in YYYY-MM-DD form")
+        try:
+            date.fromisoformat(end)
+        except ValueError:
+            raise InvalidInput("end_date is not a valid date") from None
+        end_time = time_of("end_time", end)
+        # Both ends are in the event's one timezone (or none), so compare as entered.
+        if end < start or (end == start and start_time and end_time and end_time < start_time):
+            raise InvalidInput("the range ends before it starts")
+    else:
+        end, end_time = "", ""  # only a range has an end
+
+    def moment(day: str, hhmm: str) -> str:
+        if hhmm and tz is not None:
+            local = datetime.fromisoformat(f"{day}T{hhmm}").replace(tzinfo=tz)
+            return local.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M")
+        return f"{day}T{hhmm or '00:00'}"
+
+    return {
+        "date_precision": precision,
+        "start_date": start,
+        "start_time": start_time,
+        "end_date": end,
+        "end_time": end_time,
+        "timezone": tz_name,
+        "sort_key": moment(padded, start_time),
+    }
 
 
 def _coordinate(value: Any, axis: str) -> float:

@@ -32,6 +32,7 @@ The workspace only works on a local, unrestricted instance. A public or demo ins
 | Findings | Your findings, each with a title, description, provenance, confidence, source URL, target, date recorded and investigator notes, plus the evidence that supports it |
 | Evidence | Evidence entries: a description, provenance, source URL, date collected, and optionally the target and the finding it supports |
 | Sources | Every source the findings and evidence rely on, with its type, dates, your reliability rating and what cites it. You can also add a source by hand. |
+| Timeline | Dated events and the correlations you draw between them (below) |
 | Graph | Entities and the relationships between them, drawn as an interactive map (below) |
 | Notes | Free-form investigator notes |
 
@@ -89,6 +90,43 @@ Every source starts **not assessed**, including those added automatically. Only 
 
 Click any listed item to open it.
 
+## Timeline and correlation
+
+The **Timeline** tab lists the investigation's events in date order. Like the rest of the workspace it holds only what you enter: nothing dates, links, verifies or correlates events for you, and nothing contacts a target.
+
+**Events** have a title, an optional description and investigator notes, a category (communication, registration, publication, account activity, infrastructure change, transaction, meeting, travel, legal or other) and a provenance:
+
+| Provenance | Meaning |
+|---|---|
+| Source-reported | A source says it happened |
+| Analyst observation | You saw it in a source yourself |
+| Hypothesis (the default) | You think it may have happened |
+| Analyst conclusion | You infer it from other events or findings |
+
+There is no "verified" provenance, and a new event is a hypothesis until you say otherwise.
+
+**Dates** are one of three kinds, shown differently in the list:
+
+- **Exact**: a date (`YYYY-MM-DD`), optionally with a time (`HH:MM`).
+- **Approximate**, shown with `≈`: a year (`2026`), a month (`2026-03`) or a day.
+- **Range**, shown as `start → end`: a start and an end date, each optionally with a time.
+
+A time can have a time zone: an IANA name such as `Europe/London`, `UTC`, or an offset such as `+05:30`. Dates and times are kept exactly as you entered them.
+
+Events can be **linked** to the investigation's targets, entities, findings, evidence and sources. Deleting a linked item removes the link and keeps the event.
+
+Using the timeline:
+
+- Sort oldest or newest first. Filter by category, provenance, linked entity, date range, events that cite evidence, or text.
+- Click an event to see its details, links and correlations; edit or delete it there. Deleting asks first and says which correlations lose it.
+- Long timelines show 100 events at a time, grouped by month, with **Show more**.
+
+**Correlations** group two or more events you think may be connected. Tick events and choose **Compare selected** to see them side by side, in order, with the time between them; **Group as correlation** records the grouping. A correlation has a title, your explanation, a confidence level (low by default), notes, an optional "recorded by", and optionally a cited finding and evidence. It is an **analyst hypothesis** unless you mark it documented, which needs a cited finding or evidence entry. The time between events is plain arithmetic: it is shown as approximate when a date is approximate or only one of the times has a time zone, and it is never a claim that one event caused another. If a correlation loses its citations or falls below two events because something was deleted, it is flagged, not changed.
+
+### How events are ordered
+
+An event with a time and a time zone is ordered by that moment in UTC. An event without a time zone is ordered by its date and time as written, and an approximate date by the start of its year or month. A timeline that mixes events with and without time zones can therefore be out of order by up to the time-zone difference on the same day; give times a zone when the order matters.
+
 ## Entity relationship graph
 
 The **Graph** tab is a map you draw yourself. Every entity and relationship is entered by you: nothing is looked up, inferred or created from targets, findings or tool results, and nothing contacts an entity.
@@ -120,7 +158,7 @@ New entities without a saved position are placed automatically next to the exist
 
 ## Where the data is
 
-Everything is in `workspace.db`, a SQLite file in the data directory (`~/.openosint/`, or `$OPENOSINT_HOME`). It persists across restarts. A database from an earlier version is upgraded in place the first time it is opened: new fields and the graph's tables are added empty or unassessed, and nothing already saved is changed. An older OpenOSINT cannot open it afterwards. Like the rest of the data directory, a new directory is created owner-only (0700) and the new database file 0600. Nothing is sent anywhere. Back up or move an investigation by copying that file while OpenOSINT is not running.
+Everything is in `workspace.db`, a SQLite file in the data directory (`~/.openosint/`, or `$OPENOSINT_HOME`). It persists across restarts. A database from an earlier version is upgraded in place the first time it is opened: new fields and the graph and timeline tables are added empty or unassessed, and nothing already saved is changed. An older OpenOSINT cannot open it afterwards. Like the rest of the data directory, a new directory is created owner-only (0700) and the new database file 0600. Nothing is sent anywhere. Back up or move an investigation by copying that file while OpenOSINT is not running.
 
 ## API
 
@@ -140,6 +178,7 @@ The page uses these local routes, which you can also call from a script on the s
 | `GET /api/investigations/{id}/findings/{item_id}/trace` | A finding with its source and its supporting evidence, each with its source |
 | `POST`, `PATCH`, `DELETE` on `/api/investigations/{id}/entities[/{item_id}]` and `…/relationships[/{item_id}]` | Graph entities and relationships, like the other tabs. A relationship's evidence is a list: `"evidence_ids": [...]`. |
 | `PUT /api/investigations/{id}/entities/{item_id}/position` | Save a node's position: `{"x": …, "y": …}` |
+| `POST`, `PATCH`, `DELETE` on `/api/investigations/{id}/events[/{item_id}]` and `…/correlations[/{item_id}]` | Timeline events (links as `"links": [{"kind": "evidence", "id": …}]`) and correlations (`"event_ids"`, `"evidence_ids"`) |
 | `GET /api/investigations/{id}/relationships/{item_id}/trace` | A relationship with its two entities, its finding and its evidence, each with its source |
 
 Invalid input gets a 422 with the reason, an unknown id a 404, and a duplicate target or source URL a 409. Browser requests from another origin are rejected, as for every `/api` route.
@@ -154,5 +193,8 @@ Invalid input gets a 422 with the reason, an unknown id a 404, and a duplicate t
 - The graph has one view per investigation: no filtering, grouping, search or export, and no undo for moved nodes.
 - Relationships are directed (from → to); there is no separate undirected kind. Several relationships can join the same two entities.
 - "Recorded by" is free text you type: there are no user accounts, so it is not verified.
+- The timeline is a list, not a scaled chart: distance on screen does not show time. Events are grouped by the month of their start date.
+- Recurring events, uncertainty margins ("± 3 days") and time zones on approximate dates are not supported; use the notes.
+- The date filters compare with each event's sort key (UTC when a time zone is given), so an event late in the day in a time zone west of UTC can fall on the next day for filtering.
 - Very large graphs (thousands of elements) stay usable but slower; the relationship list then becomes the practical view.
 - No export yet. The data is a plain SQLite file you can read with any SQLite tool.
