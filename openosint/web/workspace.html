@@ -99,7 +99,37 @@
     max-width:440px;width:calc(100% - 32px)}
   dialog::backdrop{background:#000a}
   dialog input{width:100%;margin:8px 0}
+  .tab-body.wide{max-width:none}
+  .graph-toolbar{display:flex;gap:8px;flex-wrap:wrap;margin:8px 0}
+  .graph-layout{display:grid;grid-template-columns:minmax(0,1fr) 340px;gap:12px}
+  .graph-canvas{position:relative;height:540px;border:1px solid var(--border);border-radius:8px;
+    background:radial-gradient(circle at 1px 1px,#ffffff08 1px,transparent 0) 0 0/22px 22px,var(--bg)}
+  .graph-empty{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;padding:24px;text-align:center}
+  .graph-detail{border:1px solid var(--border);border-radius:8px;background:var(--surface);padding:12px;
+    max-height:540px;overflow-y:auto}
+  .graph-detail .ws-form{grid-template-columns:1fr}
+  .graph-detail select[multiple]{min-height:84px}
+  .detail-kind{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--muted)}
+  .detail-title{margin:6px 0;font-size:15px;word-break:break-word}
+  .legend{display:flex;flex-wrap:wrap;gap:6px 14px;margin:10px 0;font-size:12px;color:var(--muted)}
+  .legend-item{display:inline-flex;align-items:center;gap:5px}
+  .swatch{display:inline-block;width:11px;height:11px;border-radius:3px}
+  .line{display:inline-block;width:22px;border-top:2px solid var(--muted)}
+  .line.documented{border-top-color:var(--pos)}
+  .line.hypothesis{border-top-style:dashed}
+  .line.unsupported{border-top-color:var(--neg);border-top-style:dotted}
+  .status{display:inline-block;font-size:11px;padding:1px 7px;border-radius:10px;border:1px solid var(--border)}
+  .status.documented{border-color:var(--pos);color:var(--pos)}
+  .status.hypothesis{border-style:dashed;color:var(--muted)}
+  .status.unsupported{border-color:var(--neg);color:var(--neg)}
+  .rel-table{margin-top:14px}
+  .rel-table h3{font-size:13px;margin:0 0 6px}
+  .rel-table ul{margin:0;padding-left:18px}
+  .rel-table li{margin:4px 0;word-break:break-word}
   @media (max-width:760px){
+    .graph-layout{grid-template-columns:1fr}
+    .graph-canvas{height:60vh}
+    .graph-detail{max-height:none}
     main{display:block;overflow-y:auto}
     #ws-side{width:auto;border-right:none;border-bottom:1px solid var(--border)}
     #ws-list{max-height:none}
@@ -140,6 +170,7 @@
     <button id="ws-delete-confirm" class="danger" disabled>Delete permanently</button>
   </div>
 </dialog>
+<script src="/static/vendor/cytoscape/cytoscape.min.js"></script>
 <script type="module">
   import { init } from '/static/workspace.js';
   init();

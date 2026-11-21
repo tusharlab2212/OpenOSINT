@@ -89,12 +89,42 @@ class EvidenceBody(_Body):
     kind: Optional[Literal[ws.EVIDENCE_KINDS]] = None  # type: ignore[valid-type]
 
 
+class EntityBody(_Body):
+    kind: Optional[Literal[ws.ENTITY_KINDS]] = None  # type: ignore[valid-type]
+    label: Optional[str] = _TITLE
+    description: Optional[str] = _TEXT
+    notes: Optional[str] = _TEXT
+    target_id: Optional[str] = _ID
+    pos_x: Optional[float] = None
+    pos_y: Optional[float] = None
+
+
+class RelationshipBody(_Body):
+    from_entity_id: Optional[str] = _ID
+    to_entity_id: Optional[str] = _ID
+    label: Optional[str] = _TITLE
+    status: Optional[Literal[ws.RELATIONSHIP_STATUSES]] = None  # type: ignore[valid-type]
+    confidence: Optional[Literal[ws.CONFIDENCE_LEVELS]] = None  # type: ignore[valid-type]
+    description: Optional[str] = _TEXT
+    notes: Optional[str] = _TEXT
+    recorded_by: Optional[str] = _TITLE
+    finding_id: Optional[str] = _ID
+    evidence_ids: Optional[list[str]] = Field(default=None, max_length=100)
+
+
+class PositionBody(_Body):
+    x: float
+    y: float
+
+
 _SECTION_BODIES: dict[str, type[_Body]] = {
     "targets": TargetBody,
     "sources": SourceBody,
     "findings": FindingBody,
     "notes": NoteBody,
     "evidence": EvidenceBody,
+    "entities": EntityBody,
+    "relationships": RelationshipBody,
 }
 
 
@@ -168,6 +198,16 @@ def register_workspace_routes(
     async def trace_finding(request: Request, inv_id: str, item_id: str):
         _check(request)
         return await _run(lambda s: s.trace_finding(inv_id, item_id))
+
+    @app.get("/api/investigations/{inv_id}/relationships/{item_id}/trace")
+    async def trace_relationship(request: Request, inv_id: str, item_id: str):
+        _check(request)
+        return await _run(lambda s: s.trace_relationship(inv_id, item_id))
+
+    @app.put("/api/investigations/{inv_id}/entities/{item_id}/position")
+    async def set_entity_position(request: Request, inv_id: str, item_id: str, body: PositionBody):
+        _check(request)
+        return await _run(lambda s: s.set_entity_position(inv_id, item_id, body.x, body.y))
 
     for section, model in _SECTION_BODIES.items():
         _add_section_routes(app, section, model, _check, _run)

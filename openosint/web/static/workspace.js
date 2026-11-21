@@ -9,6 +9,11 @@
  * The pure helpers are exported for tests/test_workspace.mjs; init() wires the page.
  */
 import { safeHttpUrl } from '/static/url-safety.js';
+import {
+  ENTITY_KINDS, ENTITY_STYLE, RELATIONSHIP_PRESETS, RELATIONSHIP_STATUSES, STATUS_LABELS,
+  graphElements, graphStyle, performanceOptions, relationshipsOf, unplacedIds,
+  validateRelationship, withDistinctPositions,
+} from '/static/workspace-graph.js';
 
 export const TARGET_KINDS = ['username', 'domain', 'email', 'url', 'ip', 'phone', 'other'];
 export const CONFIDENCE_LEVELS = ['low', 'medium', 'high'];
@@ -58,6 +63,7 @@ export const TABS = [
   { id: 'findings', label: 'Findings' },
   { id: 'evidence', label: 'Evidence' },
   { id: 'sources', label: 'Sources' },
+  { id: 'graph', label: 'Graph', count: 'entities' },
   { id: 'notes', label: 'Notes' },
 ];
 
@@ -107,6 +113,31 @@ export const FIELDS = {
     { name: 'notes', label: 'Notes', type: 'textarea' },
   ],
   notes: [{ name: 'body', label: 'Note', type: 'textarea', required: true }],
+  entities: [
+    { name: 'kind', label: 'Type', type: 'select', required: true,
+      options: ENTITY_KINDS.map((k) => [k, ENTITY_STYLE[k].label]) },
+    { name: 'label', label: 'Name', type: 'text', max: 200,
+      placeholder: 'Leave empty to use the linked target' },
+    { name: 'target_id', label: 'Linked target', type: 'ref', ref: 'targets' },
+    { name: 'description', label: 'Description', type: 'textarea' },
+    { name: 'notes', label: 'Analyst notes', type: 'textarea' },
+  ],
+  relationships: [
+    { name: 'from_entity_id', label: 'From', type: 'ref', ref: 'entities', required: true },
+    { name: 'label', label: 'Relationship', type: 'text', required: true, max: 200,
+      suggest: RELATIONSHIP_PRESETS, placeholder: 'e.g. operates' },
+    { name: 'to_entity_id', label: 'To', type: 'ref', ref: 'entities', required: true },
+    { name: 'status', label: 'Status', type: 'select', required: true,
+      options: RELATIONSHIP_STATUSES.map((s) => [s, STATUS_LABELS[s]]) },
+    { name: 'confidence', label: 'Confidence', type: 'select', options: CONFIDENCE_LEVELS,
+      required: true },
+    { name: 'finding_id', label: 'Cites finding', type: 'ref', ref: 'findings' },
+    { name: 'evidence_ids', label: 'Cites evidence (select one or more)', type: 'multiref',
+      ref: 'evidence' },
+    { name: 'description', label: 'Description', type: 'textarea' },
+    { name: 'notes', label: 'Analyst notes', type: 'textarea' },
+    { name: 'recorded_by', label: 'Recorded by (optional)', type: 'text', max: 200 },
+  ],
 };
 
 /** Defaults for a new item. Confidence starts low: it is never raised automatically. */
@@ -116,6 +147,9 @@ export function defaultsFor(section, today = todayIso()) {
   }
   if (section === 'evidence') return { kind: 'observation', collected_on: today };
   if (section === 'sources') return { source_type: 'unspecified', reliability: 'unassessed' };
+  // A relationship is a hypothesis until you document it.
+  if (section === 'relationships') return { status: 'hypothesis', confidence: 'low', evidence_ids: [] };
+  if (section === 'entities') return { kind: 'person' };
   if (section === 'targets') return { kind: 'domain' };
   return {};
 }
@@ -151,6 +185,10 @@ export function validateForm(section, values) {
     if (field.type === 'url' && value && !safeHttpUrl(value)) {
       return `${field.label} must be an http:// or https:// URL.`;
     }
+  }
+  if (section === 'relationships') {
+    const problem = validateRelationship(values);
+    if (problem) return problem;
   }
   if (section === 'sources') {
     const rating = String(values.reliability ?? 'unassessed');
@@ -296,6 +334,11 @@ export function init(root = document) {
   async function open(id, tab = 'overview') {
     const data = await guard(() => api('GET', `/api/investigations/${encodeURIComponent(id)}`));
     if (!data) return;
+    if (!state.current || state.current.id !== data.id) {
+      graphView.viewport = null;
+      graphView.selected = null;
+      graphView.form = null;
+    }
     state.current = data;
     state.tab = tab;
     state.editing = null;
@@ -370,6 +413,12 @@ export function init(root = document) {
     const items = (state.current && state.current[ref]) || [];
     if (ref === 'targets') return items.map((t) => [t.id, targetLabel(t.kind, t.value)]);
     if (ref === 'findings') return items.map((f) => [f.id, f.title]);
+    if (ref === 'entities') {
+      return items.map((e) => [e.id, `${e.label} (${ENTITY_STYLE[e.kind]?.label || e.kind})`]);
+    }
+    if (ref === 'evidence') {
+      return items.map((e) => [e.id, `${e.collected_on} — ${e.description.slice(0, 70)}`]);
+    }
     return [];
   }
 
@@ -381,6 +430,14 @@ export function init(root = document) {
       const id = `f-${testid}-${field.name}`;
       if (field.type === 'textarea') {
         input = el('textarea', { id, rows: 3 });
+      } else if (field.type === 'multiref') {
+        input = el('select', { id, multiple: true, size: 4 });
+        const chosen = new Set(values[field.name] || []);
+        for (const [value, label] of refOptions(field.ref)) {
+          const option = el('option', { value, text: label });
+          option.selected = chosen.has(value);
+          input.append(option);
+        }
       } else if (field.type === 'select' || field.type === 'ref') {
         input = el('select', { id });
         if (field.type === 'ref') input.append(el('option', { value: '', text: '— none —' }));
@@ -399,9 +456,10 @@ export function init(root = document) {
         if (field.type === 'url' && field.name === 'source_url') {
           input.setAttribute('list', 'ws-source-urls');
         }
+        if (field.suggest) input.setAttribute('list', 'ws-relationship-presets');
       }
       input.name = field.name;
-      input.value = values[field.name] ?? '';
+      if (field.type !== 'multiref') input.value = values[field.name] ?? '';
       if (field.required) input.required = true;
       if (editing && field.lockedOnEdit) {
         input.readOnly = true;
@@ -425,7 +483,10 @@ export function init(root = document) {
     form.addEventListener('submit', async (event) => {
       event.preventDefault();
       const current = Object.fromEntries(
-        Object.entries(inputs).map(([name, input]) => [name, input.value]),
+        Object.entries(inputs).map(([name, input]) => [
+          name,
+          input.multiple ? Array.from(input.selectedOptions, (o) => o.value) : input.value,
+        ]),
       );
       const problem = await onSubmit(current);
       message.textContent = problem || '';
@@ -497,8 +558,16 @@ export function init(root = document) {
     const inv = state.current;
     const datalist = el('datalist', { id: 'ws-source-urls' });
     for (const s of inv.sources) datalist.append(el('option', { value: s.url }));
+    const presets = el('datalist', { id: 'ws-relationship-presets' });
+    for (const label of RELATIONSHIP_PRESETS) presets.append(el('option', { value: label }));
+    if (graphView.cy) {
+      graphView.viewport = { zoom: graphView.cy.zoom(), pan: graphView.cy.pan() };
+      graphView.cy.destroy();
+      graphView.cy = null;
+    }
     pane.append(
       datalist,
+      presets,
       el(
         'div',
         { class: 'ws-head' },
@@ -513,7 +582,7 @@ export function init(root = document) {
         'nav',
         { class: 'tabs', role: 'tablist' },
         TABS.map((tab) => {
-          const count = tab.id === 'overview' ? null : inv[tab.id].length;
+          const count = tab.id === 'overview' ? null : inv[tab.count || tab.id].length;
           return el(
             'button',
             {
@@ -531,8 +600,9 @@ export function init(root = document) {
           );
         }),
       ),
-      el('section', { class: 'tab-body' }, renderTab(inv)),
+      el('section', { class: `tab-body${state.tab === 'graph' ? ' wide' : ''}` }, renderTab(inv)),
     );
+    if (state.tab === 'graph') mountGraph(inv);
   }
 
   function renderTab(inv) {
@@ -563,6 +633,8 @@ export function init(root = document) {
           'Findings and evidence with a source URL add it here automatically (type and ' +
           'reliability start unassessed). Reliability is your own judgement of the source; ' +
           'OpenOSINT never sets it.');
+      case 'graph':
+        return renderGraphTab(inv);
       case 'notes':
         return renderSection('notes', 'note', inv.notes, (n) => [
           el('p', { class: 'pre', text: n.body }),
@@ -600,6 +672,317 @@ export function init(root = document) {
       text: label || '(untitled)',
       onclick: () => focusItem(section, id),
     });
+  }
+
+  // -- entity relationship graph -------------------------------------------------
+
+  const graphView = { cy: null, viewport: null, selected: null, form: null };
+
+  function graphBase() {
+    return `/api/investigations/${state.current.id}`;
+  }
+
+  function renderGraphTab(inv) {
+    const legend = el('div', { class: 'legend', dataset: { testid: 'graph-legend' } },
+      ENTITY_KINDS.map((k) => el('span', { class: 'legend-item' },
+        el('span', { class: 'swatch', style: `background:${ENTITY_STYLE[k].color}` }),
+        ENTITY_STYLE[k].label)),
+      el('span', { class: 'legend-item' }, el('span', { class: 'line documented' }), 'Documented'),
+      el('span', { class: 'legend-item' }, el('span', { class: 'line hypothesis' }), 'Hypothesis'),
+      el('span', { class: 'legend-item' }, el('span', { class: 'line unsupported' }), 'Documented, citation deleted'));
+    const toolbar = el('div', { class: 'graph-toolbar' },
+      el('button', { class: 'primary', dataset: { testid: 'add-entity' }, text: '+ Entity',
+        onclick: () => openGraphForm('entities', null) }),
+      el('button', { dataset: { testid: 'add-relationship' }, text: '+ Relationship',
+        disabled: inv.entities.length < 2,
+        title: inv.entities.length < 2 ? 'Add at least two entities first' : '',
+        onclick: () => openGraphForm('relationships', null) }),
+      el('button', { text: 'Fit', onclick: () => graphView.cy && fitGraph(graphView.cy) }),
+      el('button', { text: 'Arrange', dataset: { testid: 'arrange' }, onclick: arrangeAll }));
+    const canvas = el('div', { id: 'ws-graph', class: 'graph-canvas', dataset: { testid: 'graph-canvas' } });
+    if (!inv.entities.length) {
+      canvas.append(el('p', { class: 'muted graph-empty', text:
+        'No entities yet. Add the people, organizations, accounts, domains and other entities ' +
+        'of this investigation, then connect them with relationships you can document.' }));
+    }
+    return el('div', { class: 'graph-tab' },
+      el('p', { class: 'muted small', text:
+        'A manual map: every entity and relationship is entered by you; nothing is inferred or ' +
+        'looked up. A relationship stays a hypothesis until you mark it documented and cite a ' +
+        'finding or evidence. Drag to move, scroll or pinch to zoom, click for details.' }),
+      toolbar,
+      el('div', { class: 'graph-layout' }, canvas,
+        el('aside', { id: 'ws-graph-detail', class: 'graph-detail', dataset: { testid: 'graph-detail' } })),
+      legend,
+      renderRelationshipTable(inv));
+  }
+
+  function renderRelationshipTable(inv) {
+    const wrap = el('div', { class: 'rel-table', dataset: { testid: 'relationship-list' } },
+      el('h3', { text: `Relationships (${inv.relationships.length})` }));
+    if (!inv.relationships.length) {
+      wrap.append(el('p', { class: 'muted', text: 'No relationships yet.' }));
+      return wrap;
+    }
+    const list = el('ul', {});
+    for (const r of inv.relationships) {
+      list.append(el('li', {},
+        el('button', { class: 'linkish', dataset: { testid: 'relationship-row', id: r.id },
+          onclick: () => selectInGraph('relationship', r.id) },
+          `${r.from_label} — ${r.label} → ${r.to_label}`),
+        ' ', statusBadge(r), ' ',
+        el('span', { class: 'muted small', text: `${r.confidence} confidence · ${r.evidence_ids.length} evidence` })));
+    }
+    wrap.append(list);
+    return wrap;
+  }
+
+  function statusBadge(r) {
+    if (r.unsupported) {
+      return el('span', { class: 'status unsupported', title: 'Marked documented, but its cited finding and evidence were deleted', text: 'documented — no citation left' });
+    }
+    return el('span', { class: `status ${r.status}`, text: r.status === 'documented' ? 'documented' : 'hypothesis' });
+  }
+
+  function mountGraph(inv) {
+    const container = root.getElementById('ws-graph');
+    renderGraphDetail();
+    if (!container || !inv.entities.length) return;
+    if (typeof window.cytoscape !== 'function') {
+      container.append(el('p', { class: 'form-error', text: 'The graph library did not load; use the relationship list below.' }));
+      return;
+    }
+    // Distinct positions first: see withDistinctPositions. Unplaced nodes are laid out below.
+    const elements = withDistinctPositions(graphElements(inv));
+    const perf = performanceOptions(elements.length);
+    const cy = window.cytoscape({
+      container,
+      elements,
+      style: graphStyle(elements.length),
+      layout: { name: 'preset' },
+      minZoom: 0.1,
+      maxZoom: 3,
+      boxSelectionEnabled: false,
+      hideEdgesOnViewport: perf.hideEdgesOnViewport,
+      textureOnViewport: perf.textureOnViewport,
+    });
+    graphView.cy = cy;
+    window._wsGraph = cy; // for debugging and browser tests
+    const unplaced = unplacedIds(inv);
+    if (unplaced.length) {
+      const placed = cy.nodes().filter((n) => !unplaced.includes(n.id()));
+      const fresh = cy.nodes().filter((n) => unplaced.includes(n.id()));
+      const layout = fresh.layout({
+        name: placed.length ? 'grid' : 'cose',
+        animate: false,
+        fit: false,
+        boundingBox: placed.length
+          ? { x1: placed.boundingBox().x2 + 60, y1: placed.boundingBox().y1, w: 240, h: Math.max(160, fresh.length * 50) }
+          : undefined,
+      });
+      layout.run();
+      savePositions(fresh);
+    }
+    if (graphView.viewport) {
+      cy.zoom(graphView.viewport.zoom);
+      cy.pan(graphView.viewport.pan);
+    } else {
+      fitGraph(cy);
+    }
+    cy.on('tap', 'node', (evt) => showSelection('entity', evt.target.id()));
+    cy.on('tap', 'edge', (evt) => showSelection('relationship', evt.target.id()));
+    cy.on('tap', (evt) => {
+      if (evt.target === cy) showSelection(null, null);
+    });
+    cy.on('dragfree', 'node', (evt) => savePositions(evt.target));
+    if (graphView.selected) {
+      const node = cy.getElementById(graphView.selected.id);
+      if (node.nonempty()) node.select();
+    }
+  }
+
+  /** Fit the graph, without blowing a few nodes up to the maximum zoom. */
+  function fitGraph(cy) {
+    cy.stop(true); // a running "center on selection" animation would undo the fit
+    cy.fit(undefined, 40);
+    if (cy.zoom() > 1.25) {
+      cy.zoom(1.25);
+      cy.center();
+    }
+  }
+
+  async function savePositions(nodes) {
+    for (const node of nodes) {
+      const { x, y } = node.position();
+      await guard(() => api('PUT', `${graphBase()}/entities/${node.id()}/position`, { x, y }));
+    }
+  }
+
+  async function arrangeAll() {
+    const cy = graphView.cy;
+    if (!cy || !window.confirm('Rearrange every entity? Your current node positions are replaced.')) return;
+    cy.layout({ name: 'cose', animate: false, fit: false }).run();
+    fitGraph(cy);
+    await savePositions(cy.nodes());
+  }
+
+  function selectInGraph(type, id) {
+    if (graphView.cy) {
+      graphView.cy.elements().unselect();
+      const element = graphView.cy.getElementById(id);
+      if (element.nonempty()) {
+        element.select();
+        graphView.cy.animate({ center: { eles: element }, duration: 200 });
+      }
+    }
+    showSelection(type, id);
+    root.getElementById('ws-graph-detail')?.scrollIntoView({ block: 'nearest' });
+  }
+
+  function showSelection(type, id) {
+    graphView.selected = type ? { type, id } : null;
+    graphView.form = null;
+    renderGraphDetail();
+  }
+
+  function openGraphForm(section, item) {
+    graphView.form = { section, item };
+    renderGraphDetail();
+    root.getElementById('ws-graph-detail')?.scrollIntoView({ block: 'nearest' });
+  }
+
+  function graphForm(section, item) {
+    const editing = !!item;
+    const values = editing ? { ...item } : defaultsFor(section);
+    if (!editing && section === 'relationships' && graphView.selected?.type === 'entity') {
+      values.from_entity_id = graphView.selected.id;
+    }
+    return buildForm(FIELDS[section], values, {
+      editing,
+      submitLabel: editing ? 'Save' : 'Add',
+      testid: `${section}-${editing ? 'edit' : 'add'}-form`,
+      onCancel: () => {
+        graphView.form = null;
+        renderGraphDetail();
+      },
+      onSubmit: async (formValues) => {
+        const problem = validateForm(section, formValues);
+        if (problem) return problem;
+        const body = payloadFromForm(section, formValues, { editing });
+        const base = `${graphBase()}/${section}`;
+        const saved = await guard(() =>
+          editing ? api('PATCH', `${base}/${item.id}`, body) : api('POST', base, body),
+        );
+        if (!saved) return state.error;
+        graphView.form = null;
+        graphView.selected = { type: section === 'entities' ? 'entity' : 'relationship', id: saved.id };
+        await refresh();
+        return '';
+      },
+    });
+  }
+
+  function renderGraphDetail() {
+    const panel = root.getElementById('ws-graph-detail');
+    if (!panel || !state.current) return;
+    const inv = state.current;
+    panel.replaceChildren();
+    if (graphView.form) {
+      const { section, item } = graphView.form;
+      const title = `${item ? 'Edit' : 'Add'} ${section === 'entities' ? 'entity' : 'relationship'}`;
+      panel.append(el('h3', { text: title }), graphForm(section, item));
+      return;
+    }
+    const sel = graphView.selected;
+    if (sel && sel.type === 'entity') {
+      const entity = inv.entities.find((e) => e.id === sel.id);
+      if (entity) return panel.append(...entityDetail(inv, entity).filter(Boolean));
+    }
+    if (sel && sel.type === 'relationship') {
+      const rel = inv.relationships.find((r) => r.id === sel.id);
+      if (rel) return panel.append(...relationshipDetail(inv, rel).filter(Boolean));
+    }
+    panel.append(el('p', { class: 'muted', text: 'Select an entity or a relationship to see its details.' }));
+  }
+
+  function entityDetail(inv, e) {
+    const style = ENTITY_STYLE[e.kind] || ENTITY_STYLE.custom;
+    const rels = relationshipsOf(inv, e.id);
+    return [
+      el('div', { class: 'detail-kind', dataset: { testid: 'entity-detail' } },
+        el('span', { class: 'swatch', style: `background:${style.color}` }), style.label),
+      el('h3', { class: 'detail-title', text: e.label }),
+      meta([
+        ['Linked target', e.target_id ? jump('targets', e.target_id, targetLabel(e.target_kind, e.target_value)) : ''],
+        ['Created', formatTimestamp(e.created_at)],
+        ['Updated', formatTimestamp(e.updated_at)],
+      ]),
+      e.description ? el('p', { class: 'pre', text: e.description }) : null,
+      e.notes ? el('p', { class: 'pre muted' }, el('em', { text: 'Notes: ' }), e.notes) : null,
+      el('div', { class: 'trace' },
+        el('div', { class: 'trace-title', text: `Relationships (${rels.length})` }),
+        rels.length
+          ? el('ul', {}, rels.map((r) => el('li', {},
+            el('button', { class: 'linkish', onclick: () => selectInGraph('relationship', r.id) },
+              `${r.from_label} — ${r.label} → ${r.to_label}`), ' ', statusBadge(r))))
+          : el('p', { class: 'muted small', text: 'None yet.' })),
+      el('div', { class: 'actions' },
+        el('button', { text: 'Edit', onclick: () => openGraphForm('entities', e) }),
+        el('button', { text: '+ Relationship from here', disabled: inv.entities.length < 2,
+          onclick: () => openGraphForm('relationships', null) }),
+        el('button', { class: 'danger', dataset: { testid: 'delete-entity' }, text: 'Delete',
+          onclick: () => deleteGraphItem('entities', e, rels.length) })),
+    ];
+  }
+
+  function relationshipDetail(inv, r) {
+    const evidence = new Map(inv.evidence.map((e) => [e.id, e]));
+    const cited = r.evidence_ids.map((id) => evidence.get(id)).filter(Boolean);
+    return [
+      el('div', { class: 'detail-kind', dataset: { testid: 'relationship-detail' } }, statusBadge(r),
+        ' ', el('span', { class: `conf ${r.confidence}`, text: `${r.confidence} confidence` })),
+      el('h3', { class: 'detail-title' },
+        jumpEntity(r.from_entity_id, r.from_label), ` — ${r.label} → `, jumpEntity(r.to_entity_id, r.to_label)),
+      r.unsupported
+        ? el('p', { class: 'form-error', text: 'Marked documented, but the finding and evidence it cited were deleted. Cite new support or change it to a hypothesis.' })
+        : null,
+      r.description ? el('p', { class: 'pre', text: r.description }) : null,
+      meta([
+        ['Status', STATUS_LABELS[r.status] || r.status],
+        ['Recorded by', r.recorded_by],
+        ['Created', formatTimestamp(r.created_at)],
+        ['Updated', formatTimestamp(r.updated_at)],
+        ['Cites finding', r.finding_id ? jump('findings', r.finding_id, r.finding_title) : ''],
+      ]),
+      el('div', { class: 'trace', dataset: { testid: 'relationship-evidence' } },
+        el('div', { class: 'trace-title', text: `Cited evidence (${cited.length})` }),
+        cited.length
+          ? el('ul', {}, cited.map((e) => el('li', {}, provenanceBadge(e.kind), ' ',
+            jump('evidence', e.id, e.description.slice(0, 80)),
+            e.source_url ? [' — ', sourceRef(e.source_url, e.source_reliability)] : '')))
+          : el('p', { class: 'muted small', text: 'None.' })),
+      r.notes ? el('p', { class: 'pre muted' }, el('em', { text: 'Notes: ' }), r.notes) : null,
+      el('div', { class: 'actions' },
+        el('button', { text: 'Edit', onclick: () => openGraphForm('relationships', r) }),
+        el('button', { class: 'danger', dataset: { testid: 'delete-relationship' }, text: 'Delete',
+          onclick: () => deleteGraphItem('relationships', r, 0) })),
+    ];
+  }
+
+  function jumpEntity(id, label) {
+    return el('button', { class: 'linkish', text: label, onclick: () => selectInGraph('entity', id) });
+  }
+
+  async function deleteGraphItem(section, item, relCount) {
+    const message = section === 'entities'
+      ? `Delete the entity "${item.label}"${relCount ? ` and its ${relCount} relationship(s)` : ''}? This cannot be undone.`
+      : `Delete the relationship "${item.from_label} — ${item.label} → ${item.to_label}"? This cannot be undone.`;
+    if (!window.confirm(message)) return;
+    const ok = await guard(() => api('DELETE', `${graphBase()}/${section}/${item.id}`));
+    if (!ok) return;
+    graphView.selected = null;
+    graphView.form = null;
+    await refresh();
   }
 
   function focusItem(section, id) {
