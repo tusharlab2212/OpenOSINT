@@ -1,0 +1,132 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>OpenOSINT — Research workspace</title>
+<style>
+  :root{
+    --bg:#0d1117; --surface:#161b22; --border:#30363d; --text:#e6edf3; --muted:#8b949e;
+    --accent:#58a6ff; --warn:#d29922; --pos:#3fb950; --neg:#f85149; --purple:#a371f7;
+    --mono:"JetBrains Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
+    --sans:"Inter",system-ui,-apple-system,Segoe UI,Roboto,sans-serif;
+  }
+  *{box-sizing:border-box}
+  html,body{height:100%;margin:0}
+  body{background:var(--bg);color:var(--text);font-family:var(--sans);font-size:14px;display:flex;flex-direction:column}
+  a{color:var(--accent);word-break:break-all}
+  header{flex:none;display:flex;align-items:center;gap:12px;padding:10px 14px;
+    border-bottom:1px solid var(--border);background:var(--surface)}
+  header h1{font-size:14px;font-weight:600;margin:0}
+  header .spacer{flex:1}
+  input,select,textarea,button{font-family:var(--sans);font-size:13px;color:var(--text);
+    background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:7px 9px}
+  textarea{resize:vertical;width:100%}
+  input:focus,select:focus,textarea:focus{outline:1px solid var(--accent)}
+  button{cursor:pointer;background:var(--surface)}
+  button:hover{border-color:var(--accent)}
+  button.primary{background:var(--accent);color:#08111f;border-color:var(--accent);font-weight:600}
+  button.danger{color:var(--neg)}
+  button.danger:hover{border-color:var(--neg)}
+  button:disabled{opacity:.5;cursor:not-allowed}
+  main{flex:1;display:flex;min-height:0}
+  #ws-side{flex:none;width:300px;border-right:1px solid var(--border);background:var(--surface);
+    display:flex;flex-direction:column;min-height:0}
+  #ws-side .side-head{padding:12px;border-bottom:1px solid var(--border)}
+  #ws-side .side-head button{width:100%}
+  #ws-create .ws-form{margin-top:10px}
+  #ws-list{flex:1;overflow-y:auto;padding:8px}
+  .inv{display:flex;flex-direction:column;align-items:flex-start;gap:2px;width:100%;text-align:left;
+    margin-bottom:6px;background:var(--bg)}
+  .inv.active{border-color:var(--accent)}
+  .inv-title{font-weight:600;word-break:break-word}
+  #ws-main{flex:1;overflow-y:auto;padding:16px 20px 40px;min-width:0}
+  .empty{max-width:560px;margin:40px auto;line-height:1.6;color:var(--muted)}
+  .empty h2{color:var(--text);font-size:17px}
+  .ws-head{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+  .ws-head h2{margin:0;font-size:18px;word-break:break-word}
+  .ws-head .back{display:none}
+  .tabs{display:flex;gap:4px;margin:14px 0;border-bottom:1px solid var(--border);overflow-x:auto}
+  .tabs button{border:none;border-bottom:2px solid transparent;border-radius:0;background:none;
+    color:var(--muted);white-space:nowrap;padding:8px 10px}
+  .tabs button.active{color:var(--text);border-bottom-color:var(--accent)}
+  .tab-body{max-width:860px}
+  .card{border:1px solid var(--border);border-radius:8px;padding:12px;margin:10px 0;background:var(--surface)}
+  .card.editing{border-color:var(--accent)}
+  .card-title{margin:0 0 6px;word-break:break-word}
+  .card .actions{margin-top:8px}
+  .actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
+  .pre{white-space:pre-wrap;word-break:break-word}
+  .muted{color:var(--muted)}
+  .small{font-size:12px}
+  .mono{font-family:var(--mono);font-size:12px;word-break:break-all}
+  .chip{display:inline-block;font-family:var(--mono);font-size:11px;padding:1px 6px;border-radius:4px;
+    border:1px solid var(--border);color:var(--muted)}
+  .conf{display:inline-block;font-size:11px;font-weight:600;padding:1px 7px;border-radius:10px;
+    text-transform:uppercase;letter-spacing:.03em;color:#08111f}
+  .conf.low{background:var(--muted)} .conf.medium{background:var(--warn)} .conf.high{background:var(--pos)}
+  h3.group{font-size:13px;margin:22px 0 4px;padding-left:8px;border-left:3px solid var(--accent)}
+  h3.group.assumption{border-left-color:var(--warn)}
+  h3.group.conclusion{border-left-color:var(--purple)}
+  dl.meta{display:grid;grid-template-columns:max-content 1fr;gap:3px 12px;margin:8px 0 0;font-size:12px}
+  dl.meta dt{color:var(--muted)} dl.meta dd{margin:0;word-break:break-word}
+  details.add{border:1px dashed var(--border);border-radius:8px;padding:10px 12px;margin-bottom:12px}
+  details.add summary{cursor:pointer;color:var(--accent);font-weight:600}
+  .ws-form{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px 14px;margin-top:10px}
+  .ws-form .field{display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--muted)}
+  .ws-form .field:has(textarea){grid-column:1/-1}
+  .ws-form .actions,.ws-form .form-error{grid-column:1/-1;margin:0}
+  #ws-create .ws-form{grid-template-columns:1fr}
+  .form-error,#ws-error{color:var(--neg)}
+  #ws-error{margin:0;padding:8px 14px;background:#f8514914;border-bottom:1px solid var(--neg)}
+  dialog{background:var(--surface);color:var(--text);border:1px solid var(--neg);border-radius:10px;
+    max-width:440px;width:calc(100% - 32px)}
+  dialog::backdrop{background:#000a}
+  dialog input{width:100%;margin:8px 0}
+  @media (max-width:760px){
+    main{display:block;overflow-y:auto}
+    #ws-side{width:auto;border-right:none;border-bottom:1px solid var(--border)}
+    #ws-list{max-height:none}
+    body.has-current #ws-side{display:none}
+    body:not(.has-current) #ws-main{display:none}
+    .ws-head .back{display:inline-block}
+    #ws-main{padding:12px}
+    .ws-form{grid-template-columns:1fr}
+  }
+</style>
+</head>
+<body>
+<header>
+  <h1>OpenOSINT · Research workspace</h1>
+  <span class="spacer"></span>
+  <a href="/">Chat</a>
+  <a href="/docs/docs/workspace/">Help</a>
+</header>
+<p id="ws-error" role="alert" hidden></p>
+<main>
+  <aside id="ws-side">
+    <div class="side-head">
+      <button id="ws-new" class="primary" data-testid="new-investigation">+ New investigation</button>
+      <div id="ws-create"></div>
+    </div>
+    <div id="ws-list" data-testid="investigation-list"></div>
+  </aside>
+  <section id="ws-main"></section>
+</main>
+<dialog id="ws-delete" data-testid="delete-dialog">
+  <h3 style="margin-top:0">Delete this investigation?</h3>
+  <p>This permanently deletes <strong id="ws-delete-title"></strong> and every target, finding,
+    source, evidence entry and note in it. It cannot be undone.</p>
+  <label class="small muted" for="ws-delete-input">Type the investigation's title to confirm:</label>
+  <input id="ws-delete-input" autocomplete="off">
+  <div class="actions">
+    <button id="ws-delete-cancel">Cancel</button>
+    <button id="ws-delete-confirm" class="danger" disabled>Delete permanently</button>
+  </div>
+</dialog>
+<script type="module">
+  import { init } from '/static/workspace.js';
+  init();
+</script>
+</body>
+</html>

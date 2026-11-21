@@ -1,0 +1,308 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>OpenOSINT research workspace: organise an investigation</title>
+<meta name="description" content="Keep an investigation&#39;s targets, findings, sources, evidence and notes in one place, saved locally in your data directory. How to use the /workspace page.">
+<link rel="canonical" href="https://openosint.tech/docs/workspace/">
+<meta name="theme-color" content="#16181b">
+<link rel="icon" href="/favicon.ico" sizes="48x48">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<link rel="manifest" href="/site.webmanifest">
+<link rel="preload" href="/assets/fonts/HankenGrotesk.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="/style.css">
+<meta property="og:site_name" content="OpenOSINT">
+<meta property="og:type" content="website">
+<meta property="og:title" content="OpenOSINT research workspace: organise an investigation">
+<meta property="og:description" content="Keep an investigation&#39;s targets, findings, sources, evidence and notes in one place, saved locally in your data directory. How to use the /workspace page.">
+<meta property="og:url" content="https://openosint.tech/docs/workspace/">
+<meta property="og:image" content="https://openosint.tech/assets/social-card.png">
+<meta property="og:image:width" content="1280">
+<meta property="og:image:height" content="640">
+<meta property="og:image:alt" content="OpenOSINT: the OSINT toolkit for AI agents. Agent Skill, MCP server and CLI.">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="OpenOSINT research workspace: organise an investigation">
+<meta name="twitter:description" content="Keep an investigation&#39;s targets, findings, sources, evidence and notes in one place, saved locally in your data directory. How to use the /workspace page.">
+<meta name="twitter:image" content="https://openosint.tech/assets/social-card.png">
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "BreadcrumbList",
+  "itemListElement": [
+    {
+      "@type": "ListItem",
+      "position": 1,
+      "name": "Home",
+      "item": "https://openosint.tech/"
+    },
+    {
+      "@type": "ListItem",
+      "position": 2,
+      "name": "Docs",
+      "item": "https://openosint.tech/docs/"
+    },
+    {
+      "@type": "ListItem",
+      "position": 3,
+      "name": "Research workspace",
+      "item": "https://openosint.tech/docs/workspace/"
+    }
+  ]
+}
+</script>
+</head>
+<body>
+<a class="skip-link" href="#main">Skip to content</a>
+<header class="site-header">
+  <div class="wrap bar">
+    <a class="logo" href="/"><svg width="22" height="22" viewBox="0 0 22 22" aria-hidden="true"><rect x="2" y="2" width="18" height="18" fill="none" stroke="currentColor" stroke-width="3"/><path d="M11 6v10M6 11h10" stroke="currentColor" stroke-width="1.5"/></svg>OpenOSINT</a>
+    <nav class="nav" aria-label="Main">
+      <a href="/docs/" aria-current="page">Docs</a>
+      <a href="/tools/">Tools</a>
+      <a href="/blog/">Blog</a>
+      <a href="https://github.com/OpenOSINT/OpenOSINT" rel="noopener">GitHub</a>
+    </nav>
+    <div class="bar-right">
+      <a class="btn btn-small" href="https://app.openosint.tech/?utm_source=openosint.tech&amp;utm_medium=referral&amp;utm_campaign=nav">Hosted products</a>
+      <details class="menu">
+        <summary>Menu</summary>
+        <div class="menu-panel">
+          <a href="/docs/">Docs</a>
+          <a href="/tools/">Tools</a>
+          <a href="/blog/">Blog</a>
+          <a href="https://github.com/OpenOSINT/OpenOSINT" rel="noopener">GitHub</a>
+        </div>
+      </details>
+    </div>
+  </div>
+</header>
+
+<main id="main">
+<div class="wrap page">
+  <div class="docs">
+    <nav class="docs-side" aria-label="Documentation">
+<div class="docs-links">
+  <h2>Get started</h2>
+  <ul>
+    <li><a href="/docs/">Overview</a></li>
+    <li><a href="/docs/agent-skill/">Agent Skill &amp; plugin</a></li>
+    <li><a href="/docs/install/">Install</a></li>
+    <li><a href="/docs/quickstart/">Quickstart</a></li>
+  </ul>
+  <h2>Use</h2>
+  <ul>
+    <li><a href="/docs/mcp/">MCP server</a></li>
+    <li><a href="/docs/web-ui/">Web UI</a></li>
+    <li><a href="/docs/workspace/" aria-current="page">Research workspace</a></li>
+    <li><a href="/docs/configuration/">Configuration</a></li>
+    <li><a href="/docs/bright-data/">Bright Data</a></li>
+  </ul>
+  <h2>Reference</h2>
+  <ul>
+    <li><a href="/tools/">Tools reference</a></li>
+    <li><a href="/docs/cli/">CLI reference</a></li>
+    <li><a href="/docs/safety/">Safety</a></li>
+    <li><a href="/docs/exposure/">Exposure report</a></li>
+    <li><a href="/docs/entity-graph/">Entity graph</a></li>
+    <li><a href="/docs/troubleshooting/">Troubleshooting</a></li>
+  </ul>
+  <p class="docs-version">Version 2.38.2</p>
+</div>
+</nav>
+    <article class="prose">
+      <details class="docs-menu">
+        <summary>Documentation menu</summary>
+        
+<div class="docs-links">
+  <h2>Get started</h2>
+  <ul>
+    <li><a href="/docs/">Overview</a></li>
+    <li><a href="/docs/agent-skill/">Agent Skill &amp; plugin</a></li>
+    <li><a href="/docs/install/">Install</a></li>
+    <li><a href="/docs/quickstart/">Quickstart</a></li>
+  </ul>
+  <h2>Use</h2>
+  <ul>
+    <li><a href="/docs/mcp/">MCP server</a></li>
+    <li><a href="/docs/web-ui/">Web UI</a></li>
+    <li><a href="/docs/workspace/" aria-current="page">Research workspace</a></li>
+    <li><a href="/docs/configuration/">Configuration</a></li>
+    <li><a href="/docs/bright-data/">Bright Data</a></li>
+  </ul>
+  <h2>Reference</h2>
+  <ul>
+    <li><a href="/tools/">Tools reference</a></li>
+    <li><a href="/docs/cli/">CLI reference</a></li>
+    <li><a href="/docs/safety/">Safety</a></li>
+    <li><a href="/docs/exposure/">Exposure report</a></li>
+    <li><a href="/docs/entity-graph/">Entity graph</a></li>
+    <li><a href="/docs/troubleshooting/">Troubleshooting</a></li>
+  </ul>
+  <p class="docs-version">Version 2.38.2</p>
+</div>
+
+      </details>
+      <nav class="crumbs" aria-label="Breadcrumb">
+        <ol>
+          <li><a href="/">Home</a></li>
+          <li><a href="/docs/">Docs</a></li>
+          <li>Research workspace</li>
+        </ol>
+      </nav>
+      <h1>Research workspace</h1>
+      <p>The research workspace organises an investigation instead of leaving it in chat history. You record what you research and what you find; the workspace keeps it structured and saved.</p>
+<p>It is a record-keeping tool only. Nothing in it runs a tool, fetches a URL or contacts a target. Source links open only when you click them.</p>
+<h2 id="open-it">Open it</h2>
+<p>Start the <a href="/docs/web-ui/">web UI</a> and click <strong>Workspace</strong> in the left rail, or go to <code>http://127.0.0.1:8080/workspace</code>.</p>
+<p>The workspace only works on a local, unrestricted instance. A public or demo instance, a non-loopback bind, or a request through a reverse proxy without <code>OPENOSINT_TRUSTED_PROXY</code> gets a 403, so one shared store is never exposed to whoever can reach the server.</p>
+<h2 id="investigations">Investigations</h2>
+<ul>
+<li><strong>Create</strong> one with <strong>+ New investigation</strong>: a title and an optional description.</li>
+<li><strong>Open</strong> one from the list. The list shows every saved investigation, most recently changed first.</li>
+<li><strong>Rename</strong> it or change its description from <strong>Overview → Rename / edit description</strong>.</li>
+<li><strong>Delete</strong> it from <strong>Overview → Delete investigation</strong>. You must type its exact title to confirm. This deletes every target, finding, source, evidence entry and note in it, and cannot be undone.</li>
+</ul>
+<h2 id="what-an-investigation-holds">What an investigation holds</h2>
+<div class="table-wrap" tabindex="0" role="region" aria-label="Table"><table>
+<thead>
+<tr>
+<th>Tab</th>
+<th>What you record</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Overview</td>
+<td>Title, description, created and updated dates, and how many items each tab holds</td>
+</tr>
+<tr>
+<td>Targets</td>
+<td>The identifiers you research: username, domain, email, URL, IP, phone or other. Domains and emails are lower-cased; duplicates are refused.</td>
+</tr>
+<tr>
+<td>Findings</td>
+<td>Your findings, each with a title, description, type, confidence, source URL, target, date recorded and investigator notes</td>
+</tr>
+<tr>
+<td>Evidence</td>
+<td>Evidence entries: a description, source URL, date collected, and optionally the target and the finding it supports</td>
+</tr>
+<tr>
+<td>Sources</td>
+<td>Every source URL the findings and evidence rely on, with how many of each use it. You can also add a source by hand.</td>
+</tr>
+<tr>
+<td>Notes</td>
+<td>Free-form investigator notes</td>
+</tr>
+</tbody>
+</table></div>
+<p>Every item can be edited and deleted. Deleting a target, source or finding removes the link from the items that pointed to it; the items themselves stay.</p>
+<h2 id="findings-observation-assumption-or-conclusion">Findings: observation, assumption or conclusion</h2>
+<p>Each finding has a type, and the Findings tab groups them so the difference stays visible:</p>
+<ul>
+<li><strong>Observation</strong>: what a source shows. Give it a source URL.</li>
+<li><strong>Assumption</strong>: something you take as given but have not supported with a source.</li>
+<li><strong>Conclusion</strong>: what you infer from the observations.</li>
+</ul>
+<p>Confidence is <strong>low</strong>, <strong>medium</strong> or <strong>high</strong>. A new finding starts at <strong>low</strong>, and nothing raises it for you: set it yourself when the evidence supports it, not because a tool returned a result.</p>
+<h2 id="sources">Sources</h2>
+<p>A source URL typed into a finding or an evidence entry is added to the Sources tab automatically, or linked to the existing source with the same URL. Only <code>http://</code> and <code>https://</code> URLs are accepted. URLs are stored, never fetched.</p>
+<h2 id="where-the-data-is">Where the data is</h2>
+<p>Everything is in <code>workspace.db</code>, a SQLite file in the data directory (<code>~/.openosint/</code>, or <code>$OPENOSINT_HOME</code>). It persists across restarts. Like the rest of the data directory, a new directory is created owner-only (0700) and the new database file 0600. Nothing is sent anywhere. Back up or move an investigation by copying that file while OpenOSINT is not running.</p>
+<h2 id="api">API</h2>
+<p>The page uses these local routes, which you can also call from a script on the same machine:</p>
+<div class="table-wrap" tabindex="0" role="region" aria-label="Table"><table>
+<thead>
+<tr>
+<th>Method and path</th>
+<th>Does</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>GET /api/investigations</code></td>
+<td>List investigations, with item counts</td>
+</tr>
+<tr>
+<td><code>POST /api/investigations</code></td>
+<td>Create one: <code>{"title": …, "description": …}</code></td>
+</tr>
+<tr>
+<td><code>GET /api/investigations/{id}</code></td>
+<td>One investigation with every tab</td>
+</tr>
+<tr>
+<td><code>PATCH /api/investigations/{id}</code></td>
+<td>Change <code>title</code> and/or <code>description</code></td>
+</tr>
+<tr>
+<td><code>DELETE /api/investigations/{id}</code></td>
+<td>Delete it and everything in it</td>
+</tr>
+<tr>
+<td><code>POST /api/investigations/{id}/{tab}</code></td>
+<td>Add to <code>targets</code>, <code>findings</code>, <code>evidence</code>, <code>sources</code> or <code>notes</code></td>
+</tr>
+<tr>
+<td><code>PATCH /api/investigations/{id}/{tab}/{item_id}</code></td>
+<td>Edit an item; send <code>""</code> to clear a field or link</td>
+</tr>
+<tr>
+<td><code>DELETE /api/investigations/{id}/{tab}/{item_id}</code></td>
+<td>Delete an item</td>
+</tr>
+</tbody>
+</table></div>
+<p>Invalid input gets a 422 with the reason, an unknown id a 404, and a duplicate target or source URL a 409. Browser requests from another origin are rejected, as for every <code>/api</code> route.</p>
+<h2 id="limits">Limits</h2>
+<ul>
+<li>One user, one machine: there are no accounts, sharing or sync.</li>
+<li>Findings are not created from chat or tool results automatically; you record them.</li>
+<li>Evidence is a description and a link, not a stored copy: attaching files or archived snapshots is not supported yet.</li>
+<li>No export yet. The data is a plain SQLite file you can read with any SQLite tool.</li>
+</ul>
+      <nav class="pager" aria-label="Previous and next page"><a class="prev" href="/docs/web-ui/" rel="prev"><small>Previous</small>Web UI</a><a class="next" href="/docs/configuration/" rel="next"><small>Next</small>Configuration</a>
+      </nav>
+      <p class="edit"><a href="https://github.com/OpenOSINT/OpenOSINT/edit/main/site/content/docs/workspace.md" rel="noopener">Edit this page on GitHub</a></p>
+    </article>
+  </div>
+</div>
+
+</main>
+
+<footer class="site-footer">
+  <div class="wrap">
+    <ul class="footer-links">
+      <li><a href="/blog/">Blog</a></li>
+      <li><a href="/tools/">Tools</a></li>
+      <li><a href="/commercial/">Commercial</a></li>
+      <li><a href="/sponsors.html">Sponsors</a></li>
+      <li><a href="/terms/">Terms</a></li>
+      <li><a href="/privacy/">Privacy</a></li>
+      <li><a href="/acceptable-use/">Acceptable Use</a></li>
+      <li><a href="/subprocessors/">Subprocessors</a></li>
+      <li><a href="mailto:commercial@openosint.tech">Contact</a></li>
+    </ul>
+    <span>&copy; 2026 Tommaso Bertocchi, Trieste, Italy</span>
+  </div>
+</footer>
+<script>
+document.querySelectorAll("pre").forEach(function (pre) {
+  if (!navigator.clipboard) return;
+  var b = document.createElement("button");
+  b.type = "button"; b.className = "copy"; b.textContent = "Copy"; b.setAttribute("aria-label", "Copy code");
+  b.addEventListener("click", function () {
+    var code = pre.querySelector("code") || pre;
+    navigator.clipboard.writeText(code.innerText).then(function () {
+      b.textContent = "Copied"; setTimeout(function () { b.textContent = "Copy"; }, 1500);
+    });
+  });
+  pre.appendChild(b);
+});
+</script>
+<script type="module" src="https://static.cloudflareinsights.com/beacon.min.js" data-cf-beacon='{"token": "8c1e6e8590b649a5803fbbd3356aa7d2"}'></script>
+</body>
+</html>

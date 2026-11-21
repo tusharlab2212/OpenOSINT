@@ -95,6 +95,7 @@
   <ul>
     <li><a href="/docs/mcp/">MCP server</a></li>
     <li><a href="/docs/web-ui/" aria-current="page">Web UI</a></li>
+    <li><a href="/docs/workspace/">Research workspace</a></li>
     <li><a href="/docs/configuration/">Configuration</a></li>
     <li><a href="/docs/bright-data/">Bright Data</a></li>
   </ul>
@@ -126,6 +127,7 @@
   <ul>
     <li><a href="/docs/mcp/">MCP server</a></li>
     <li><a href="/docs/web-ui/" aria-current="page">Web UI</a></li>
+    <li><a href="/docs/workspace/">Research workspace</a></li>
     <li><a href="/docs/configuration/">Configuration</a></li>
     <li><a href="/docs/bright-data/">Bright Data</a></li>
   </ul>
@@ -182,6 +184,7 @@
 </tbody>
 </table></div>
 <h2 id="the-three-views">The three views</h2>
+<p>The left rail also has <strong>Workspace</strong>, which opens the <a href="/docs/workspace/">research workspace</a>: investigations with their targets, findings, sources, evidence and notes, saved locally.</p>
 <ul>
 <li><strong>Chat.</strong> Ask in plain language. Tool output streams in as result cards, each tied to the tool call that produced it.</li>
 <li><strong>Globe.</strong> Recent worldwide news, placed on a map by the <code>search_gdelt_geo</code> tool. Hold Shift and drag to search only inside an area. Nothing is downloaded until you first use it.</li>
@@ -228,7 +231,7 @@
 <p>The <code>.env</code> next to <code>docker-compose.yml</code> is passed in by Compose (<code>env_file:</code>) as real environment variables, so every variable in it applies, <code>OPENOSINT_ALLOW_ACTIVE</code> included. A <code>.env</code> placed in the data volume (<code>/data/.env</code>) is different: the container reads it as a file, and the variables a file may not set, such as <code>OPENOSINT_ALLOW_ACTIVE</code> or the proxy variables, are ignored there. See <a href="/docs/configuration/#what-a-file-may-not-set">What a file may not set</a>.</p>
 <h2 id="files-it-writes">Files it writes</h2>
 <p>The graph database and session history live in the data directory. The web UI writes no reports; CLI and REPL reports go to <code>./reports/</code>.</p>
-      <nav class="pager" aria-label="Previous and next page"><a class="prev" href="/docs/mcp/" rel="prev"><small>Previous</small>MCP server</a><a class="next" href="/docs/configuration/" rel="next"><small>Next</small>Configuration</a>
+      <nav class="pager" aria-label="Previous and next page"><a class="prev" href="/docs/mcp/" rel="prev"><small>Previous</small>MCP server</a><a class="next" href="/docs/workspace/" rel="next"><small>Next</small>Research workspace</a>
       </nav>
       <p class="edit"><a href="https://github.com/OpenOSINT/OpenOSINT/edit/main/site/content/docs/web-ui.md" rel="noopener">Edit this page on GitHub</a></p>
     </article>
