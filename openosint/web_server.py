@@ -2467,6 +2467,12 @@ def create_app(host: str | None = None, port: int | None = None) -> FastAPI:
 
         return await asyncio.to_thread(_work)
 
+    # Research workspace (/workspace, /api/investigations/*): local workspace.db only,
+    # refused on restricted requests. Registered before the catch-all below.
+    from openosint.workspace_api import register_workspace_routes
+
+    register_workspace_routes(app, _WEB_DIR, lambda request: _request_restriction(request))
+
     @app.get("/graph", include_in_schema=False)
     async def graph_page():
         page = _WEB_DIR / "graph.html"

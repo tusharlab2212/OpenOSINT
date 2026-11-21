@@ -9,6 +9,10 @@ OpenOSINT adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- Research workspace (`/workspace` in the web UI, **Workspace** in its left rail): create, open, rename and delete investigations, each with targets, findings, sources, evidence and notes. A finding has a type (observation, assumption or conclusion), a confidence level (low, medium or high; new findings start at low and nothing raises it automatically), an optional source URL and target, the date recorded and investigator notes. Evidence entries have a description, source URL, date collected and optional target and finding. Source URLs used by findings and evidence are collected in the Sources tab. Data is stored in `workspace.db` in the data directory (created 0600, in a 0700 directory when new) and persists across restarts. The local API is `/api/investigations`; it answers 403 on restricted requests (public or demo instances, undeclared reverse proxies). Nothing in the workspace runs tools, fetches URLs or contacts targets. See `site/content/docs/workspace.md`.
+
 ### Changed
 
 - **Breaking:** a `.env` in the directory you run `openosint` from, or any parent directory, is no longer loaded. The CLI and web server used to load the first one found by searching upward, and the MCP server fell back to the same search. A cloned repository, unpacked archive or shared folder could therefore set API keys, base URLs, proxies, `PATH` or active mode for the process. Every entry point now reads `OPENOSINT_ENV_FILE` if set, otherwise the `.env` at the root of a source checkout, otherwise no `.env`. A working-directory `.env` is only detected, never read, and startup prints `[!] Not loading <path>` with how to use it on purpose. The missing-key message says the same.

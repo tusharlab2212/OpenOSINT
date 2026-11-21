@@ -1,0 +1,179 @@
+"""HTTP routes for the research workspace (``/api/investigations``) and its page (``/workspace``).
+
+The routes read and write the local ``workspace.db`` only: no tool runs, no outbound
+request, no URL is fetched. Investigations are private data, so on a restricted request
+(a public or demo instance, or one reached through an undeclared reverse proxy) every
+route answers 403 instead of exposing one shared store to whoever can reach the server.
+"""
+
+# No `from __future__ import annotations`: the route factories below annotate request
+# bodies with models chosen at runtime, which FastAPI must resolve from the signature.
+
+import asyncio
+from collections.abc import Callable
+from pathlib import Path
+from typing import Literal, Optional
+
+from fastapi import FastAPI, HTTPException, Request
+from fastapi.responses import HTMLResponse
+from pydantic import BaseModel, ConfigDict, Field
+
+from openosint import workspace as ws
+from openosint.workspace import WorkspaceError, WorkspaceStore
+
+_URL = Field(default=None, max_length=ws.URL_MAX)
+_TEXT = Field(default=None, max_length=ws.TEXT_MAX)
+_TITLE = Field(default=None, max_length=ws.TITLE_MAX)
+_SHORT = Field(default=None, max_length=ws.SHORT_TEXT_MAX)
+_ID = Field(default=None, max_length=32)
+_DATE = Field(default=None, max_length=10)
+
+
+class _Body(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+
+class InvestigationCreate(_Body):
+    title: str = Field(max_length=ws.TITLE_MAX)
+    description: Optional[str] = _TEXT
+
+
+class InvestigationUpdate(_Body):
+    title: Optional[str] = _TITLE
+    description: Optional[str] = _TEXT
+
+
+class TargetBody(_Body):
+    kind: Optional[Literal[ws.TARGET_KINDS]] = None  # type: ignore[valid-type]
+    value: Optional[str] = _SHORT
+    notes: Optional[str] = _TEXT
+
+
+class SourceBody(_Body):
+    url: Optional[str] = _URL
+    title: Optional[str] = _TITLE
+    notes: Optional[str] = _TEXT
+
+
+class FindingBody(_Body):
+    title: Optional[str] = _TITLE
+    description: Optional[str] = _TEXT
+    kind: Optional[Literal[ws.FINDING_KINDS]] = None  # type: ignore[valid-type]
+    confidence: Optional[Literal[ws.CONFIDENCE_LEVELS]] = None  # type: ignore[valid-type]
+    source_id: Optional[str] = _ID
+    source_url: Optional[str] = _URL
+    target_id: Optional[str] = _ID
+    notes: Optional[str] = _TEXT
+    recorded_on: Optional[str] = _DATE
+
+
+class NoteBody(_Body):
+    body: Optional[str] = _TEXT
+
+
+class EvidenceBody(_Body):
+    description: Optional[str] = _TEXT
+    source_id: Optional[str] = _ID
+    source_url: Optional[str] = _URL
+    target_id: Optional[str] = _ID
+    finding_id: Optional[str] = _ID
+    collected_on: Optional[str] = _DATE
+    notes: Optional[str] = _TEXT
+
+
+_SECTION_BODIES: dict[str, type[_Body]] = {
+    "targets": TargetBody,
+    "sources": SourceBody,
+    "findings": FindingBody,
+    "notes": NoteBody,
+    "evidence": EvidenceBody,
+}
+
+
+def register_workspace_routes(
+    app: FastAPI,
+    web_dir: Path,
+    request_restriction: Callable[[Request], tuple[bool, str]],
+    db_path: Callable[[], Path] = ws.default_db_path,
+) -> None:
+    """Add the workspace page and API to *app*. ``db_path`` is read per request."""
+
+    def _check(request: Request) -> None:
+        restricted, reason = request_restriction(request)
+        if restricted:
+            raise HTTPException(
+                403,
+                "The research workspace is only available on a local, unrestricted instance "
+                f"({reason}).",
+            )
+
+    async def _run(fn: Callable[[WorkspaceStore], object]) -> object:
+        def work() -> object:
+            with WorkspaceStore(db_path()) as store:
+                return fn(store)
+
+        try:
+            return await asyncio.to_thread(work)
+        except WorkspaceError as exc:
+            raise HTTPException(exc.status, str(exc)) from None
+
+    @app.get("/workspace", include_in_schema=False)
+    async def workspace_page():
+        page = web_dir / "workspace.html"
+        if page.exists():
+            return HTMLResponse(page.read_text(encoding="utf-8"))
+        return HTMLResponse("<h1>workspace.html not found</h1>", status_code=404)
+
+    @app.get("/api/investigations")
+    async def list_investigations(request: Request):
+        _check(request)
+        return {"investigations": await _run(lambda s: s.list_investigations())}
+
+    @app.post("/api/investigations", status_code=201)
+    async def create_investigation(request: Request, body: InvestigationCreate):
+        _check(request)
+        return await _run(lambda s: s.create_investigation(body.title, body.description))
+
+    @app.get("/api/investigations/{inv_id}")
+    async def get_investigation(request: Request, inv_id: str):
+        _check(request)
+        return await _run(lambda s: s.get_workspace(inv_id))
+
+    @app.patch("/api/investigations/{inv_id}")
+    async def update_investigation(request: Request, inv_id: str, body: InvestigationUpdate):
+        _check(request)
+        fields = body.model_dump(exclude_unset=True)
+        return await _run(lambda s: s.update_investigation(inv_id, fields))
+
+    @app.delete("/api/investigations/{inv_id}")
+    async def delete_investigation(request: Request, inv_id: str):
+        _check(request)
+        await _run(lambda s: s.delete_investigation(inv_id))
+        return {"status": "deleted", "id": inv_id}
+
+    for section, model in _SECTION_BODIES.items():
+        _add_section_routes(app, section, model, _check, _run)
+
+
+def _add_section_routes(app, section, model, check, run) -> None:
+    async def create_item(request: Request, inv_id: str, body: model):  # type: ignore[valid-type]
+        check(request)
+        data = body.model_dump(exclude_unset=True)
+        return await run(lambda s: s.add_item(inv_id, section, data))
+
+    async def update_item(request: Request, inv_id: str, item_id: str, body: model):  # type: ignore[valid-type]
+        check(request)
+        data = body.model_dump(exclude_unset=True)
+        return await run(lambda s: s.update_item(inv_id, section, item_id, data))
+
+    async def delete_item(request: Request, inv_id: str, item_id: str):
+        check(request)
+        await run(lambda s: s.delete_item(inv_id, section, item_id))
+        return {"status": "deleted", "id": item_id}
+
+    base = f"/api/investigations/{{inv_id}}/{section}"
+    app.add_api_route(base, create_item, methods=["POST"], status_code=201, name=f"add_{section}")
+    app.add_api_route(base + "/{item_id}", update_item, methods=["PATCH"], name=f"update_{section}")
+    app.add_api_route(
+        base + "/{item_id}", delete_item, methods=["DELETE"], name=f"delete_{section}"
+    )
