@@ -622,6 +622,12 @@ export function init(root = document) {
   function render() {
     renderList();
     const pane = $('ws-main');
+    // The pane is about to be redrawn: release the graph first, whatever is shown next.
+    if (graphView.cy) {
+      graphView.viewport = { zoom: graphView.cy.zoom(), pan: graphView.cy.pan() };
+      graphView.cy.destroy();
+      graphView.cy = null;
+    }
     pane.replaceChildren();
     document.body.classList.toggle('has-current', !!state.current);
     if (!state.current) {
@@ -647,11 +653,6 @@ export function init(root = document) {
     for (const label of RELATIONSHIP_PRESETS) presets.append(el('option', { value: label }));
     const zones = el('datalist', { id: 'ws-timezones' });
     for (const zone of COMMON_TIMEZONES) zones.append(el('option', { value: zone }));
-    if (graphView.cy) {
-      graphView.viewport = { zoom: graphView.cy.zoom(), pan: graphView.cy.pan() };
-      graphView.cy.destroy();
-      graphView.cy = null;
-    }
     pane.append(
       datalist,
       presets,
@@ -1652,6 +1653,10 @@ export function init(root = document) {
         ['Findings', String(inv.findings.length)],
         ['Evidence', String(inv.evidence.length)],
         ['Sources', String(inv.sources.length)],
+        ['Timeline events', String(inv.events.length)],
+        ['Correlations', String(inv.correlations.length)],
+        ['Entities', String(inv.entities.length)],
+        ['Relationships', String(inv.relationships.length)],
         ['Notes', String(inv.notes.length)],
       ]),
       el(

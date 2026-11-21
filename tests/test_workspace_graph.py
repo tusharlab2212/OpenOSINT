@@ -285,11 +285,13 @@ def test_trace_relationship(store, inv):
         store.trace_relationship(inv["id"], "0" * 32)
 
 
-def test_investigation_counts_unchanged_and_delete_cascades(store, inv, tmp_path):
+def test_investigation_counts_and_delete_cascades(store, inv, tmp_path):
     a, b = _entity(store, inv, "A"), _entity(store, inv, "B")
     ev = store.add_item(inv["id"], "evidence", {"description": "e"})
     _rel(store, inv, a, b, evidence_ids=[ev["id"]])
-    assert set(store.list_investigations()[0]["counts"]) == set(ws.SECTIONS)
+    counts = store.list_investigations()[0]["counts"]
+    assert set(counts) == set(ws.ALL_SECTIONS)
+    assert (counts["entities"], counts["relationships"], counts["evidence"]) == (2, 1, 1)
     store.delete_investigation(inv["id"])
     for table in ("entities", "relationships", "relationship_evidence"):
         assert store._conn.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0] == 0, table

@@ -362,7 +362,9 @@ def test_investigation_delete_and_counts(store, inv, linkables):
         _event(store, inv, "b"),
     )
     store.add_item(inv["id"], "correlations", {"title": "x", "event_ids": [a["id"], b["id"]]})
-    assert set(store.list_investigations()[0]["counts"]) == set(ws.SECTIONS)
+    counts = store.list_investigations()[0]["counts"]
+    assert set(counts) == set(ws.ALL_SECTIONS)
+    assert (counts["events"], counts["correlations"]) == (2, 1)
     store.delete_investigation(inv["id"])
     for table in (
         "events",

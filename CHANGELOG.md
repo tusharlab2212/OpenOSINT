@@ -9,6 +9,16 @@ OpenOSINT adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Release notes (draft)
+
+The first release of this fork. Highlights, detailed below:
+
+- **Security hardening**: no `.env` loading from the working directory and a denylist for variables a file may set; tool output marked as untrusted before it reaches a model, and model-chosen active tools gated behind a second opt-in (`OPENOSINT_ALLOW_ACTIVE_AGENT`, `openosint-mcp --allow-active-agent`); external programs run with a minimal environment and validated targets; owner-only data files; no automatic MCP server launch; contained GitHub workflows.
+- **Fork identity and supply chain**: instructions, skills and plugin manifests run this fork from a local checkout with `uv run --locked` instead of the upstream PyPI package; CI actions pinned to commit SHAs; Docker base image and uv pinned by digest, with dependencies installed from `uv.lock` with hashes.
+- **Research workspace** (`/workspace`): investigations with targets, findings, sources, evidence and notes; source metadata and investigator-assigned reliability; provenance and traceability; an entity relationship graph; a timeline with manual correlations; and HTML/PDF reports. Everything is entered by the investigator and stays local; nothing is inferred, verified or looked up automatically.
+
+Upgrade notes: the breaking changes are listed under *Changed* (`.env` discovery and active tools chosen by a model). The workspace database `workspace.db` is new; it is created at schema 4, and opening one made by a pre-release build of this branch upgrades it in place, after which older builds cannot open it.
+
 ### Added
 
 - Research workspace **Report** tab: build an investigation report from the recorded data, as HTML (preview, open to print, or download as one self-contained file with no scripts and a Content-Security-Policy) or as PDF (built with reportlab, already a dependency). Choose sections (overview, targets, entities, relationships, findings, evidence, sources, timeline, correlations; analyst notes only when selected) and an optional title and subtitle. Every item gets a reference (F1, E2, S3, …) with cross-references between findings, evidence, sources, relationships, events and correlations. Provenance, investigator-assigned confidence and reliability, hypothesis versus documented status and recorded warnings are labelled; nothing is summarised, inferred or filled in. Local API: `GET /api/investigations/{id}/report`.

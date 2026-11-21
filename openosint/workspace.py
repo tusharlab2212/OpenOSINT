@@ -484,7 +484,7 @@ class WorkspaceStore:
     def list_investigations(self) -> list[dict]:
         counts = {
             section: f"(SELECT COUNT(*) FROM {section} WHERE investigation_id = i.id)"
-            for section in SECTIONS
+            for section in ALL_SECTIONS
         }
         rows = self._conn.execute(
             "SELECT i.*, "
@@ -494,7 +494,7 @@ class WorkspaceStore:
         out = []
         for row in rows:
             item = dict(row)
-            item["counts"] = {s: item.pop(f"{s}_count") for s in SECTIONS}
+            item["counts"] = {s: item.pop(f"{s}_count") for s in ALL_SECTIONS}
             out.append(item)
         return out
 

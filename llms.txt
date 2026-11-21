@@ -63,7 +63,7 @@ holehe, sherlock, sublist3r, phoneinfoga — must be present in PATH
 - [Quickstart](https://openosint.tech/docs/quickstart/) — first investigation with the CLI and REPL
 - [MCP server](https://openosint.tech/docs/mcp/) — Claude Desktop, Claude Code, Cursor and other MCP clients
 - [Web UI](https://openosint.tech/docs/web-ui/) — local chat, globe and graph
-- [Research workspace](https://openosint.tech/docs/workspace/) — investigations with targets, findings, sources, evidence and notes, saved locally
+- [Research workspace](https://openosint.tech/docs/workspace/) — investigations with targets, findings, sources, evidence, notes, an entity graph and a timeline, exported as HTML or PDF reports, saved locally
 - [Configuration](https://openosint.tech/docs/configuration/) — API keys and environment variables
 - [Using OpenOSINT with Bright Data](https://openosint.tech/docs/bright-data/) — setup, cost, example output and errors for `search_dorks_live`, `search_footprint` and `scrape_url`
 - [Safety](https://openosint.tech/docs/safety/) — passive mode, tool-call cap, noise labels, responsible use
