@@ -22,12 +22,41 @@ from typing import Any
 from openosint.paths import create_private_file, ensure_private_dir, home_dir
 
 DB_FILENAME = "workspace.db"
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 
 TARGET_KINDS = ("username", "domain", "email", "url", "ip", "phone", "other")
 CONFIDENCE_LEVELS = ("low", "medium", "high")
-# Keeps what was observed apart from what is inferred from it.
-FINDING_KINDS = ("observation", "assumption", "conclusion")
+# Provenance of a finding: what you saw yourself, what a source says, what you take as
+# given, and what you infer. Keeps observed facts apart from claims and inferences.
+FINDING_KINDS = ("observation", "reported", "assumption", "conclusion")
+# Provenance of an evidence entry. Entries saved before schema 2 are "unspecified": the
+# migration does not guess.
+EVIDENCE_KINDS = ("unspecified", "observation", "reported")
+SOURCE_TYPES = (
+    "unspecified",
+    "website",
+    "social_media",
+    "news",
+    "government",
+    "company",
+    "court_record",
+    "dataset",
+    "archive",
+    "document",
+    "other",
+)
+# Source reliability on the A-F scale used in intelligence source grading. Always assigned
+# by the investigator, with a written rationale; never set or changed by OpenOSINT.
+RELIABILITY_RATINGS = ("unassessed", "A", "B", "C", "D", "E", "F")
+RELIABILITY_LABELS = {
+    "unassessed": "Not assessed",
+    "A": "Completely reliable",
+    "B": "Usually reliable",
+    "C": "Fairly reliable",
+    "D": "Not usually reliable",
+    "E": "Unreliable",
+    "F": "Reliability cannot be judged",
+}
 
 TITLE_MAX = 200
 SHORT_TEXT_MAX = 500
@@ -66,6 +95,13 @@ CREATE TABLE IF NOT EXISTS sources (
     notes TEXT NOT NULL DEFAULT '',
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL,
+    source_type TEXT NOT NULL DEFAULT 'unspecified',
+    original_url TEXT NOT NULL DEFAULT '',
+    published_on TEXT NOT NULL DEFAULT '',
+    accessed_on TEXT NOT NULL DEFAULT '',
+    reliability TEXT NOT NULL DEFAULT 'unassessed',
+    reliability_rationale TEXT NOT NULL DEFAULT '',
+    reliability_assessed_on TEXT NOT NULL DEFAULT '',
     UNIQUE (investigation_id, url)
 );
 CREATE TABLE IF NOT EXISTS findings (
@@ -99,7 +135,8 @@ CREATE TABLE IF NOT EXISTS evidence (
     collected_on TEXT NOT NULL,
     notes TEXT NOT NULL DEFAULT '',
     created_at TEXT NOT NULL,
-    updated_at TEXT NOT NULL
+    updated_at TEXT NOT NULL,
+    kind TEXT NOT NULL DEFAULT 'unspecified'
 );
 CREATE INDEX IF NOT EXISTS idx_targets_inv ON targets(investigation_id);
 CREATE INDEX IF NOT EXISTS idx_sources_inv ON sources(investigation_id);
@@ -107,6 +144,19 @@ CREATE INDEX IF NOT EXISTS idx_findings_inv ON findings(investigation_id);
 CREATE INDEX IF NOT EXISTS idx_notes_inv ON notes(investigation_id);
 CREATE INDEX IF NOT EXISTS idx_evidence_inv ON evidence(investigation_id);
 """
+
+# Columns added in schema 2. A schema-1 database gets them with their defaults; every
+# existing value is kept as it was.
+_V2_COLUMNS = (
+    ("sources", "source_type", "TEXT NOT NULL DEFAULT 'unspecified'"),
+    ("sources", "original_url", "TEXT NOT NULL DEFAULT ''"),
+    ("sources", "published_on", "TEXT NOT NULL DEFAULT ''"),
+    ("sources", "accessed_on", "TEXT NOT NULL DEFAULT ''"),
+    ("sources", "reliability", "TEXT NOT NULL DEFAULT 'unassessed'"),
+    ("sources", "reliability_rationale", "TEXT NOT NULL DEFAULT ''"),
+    ("sources", "reliability_assessed_on", "TEXT NOT NULL DEFAULT ''"),
+    ("evidence", "kind", "TEXT NOT NULL DEFAULT 'unspecified'"),
+)
 
 # The sections of an investigation, in display order.
 SECTIONS = ("targets", "sources", "findings", "notes", "evidence")
@@ -182,9 +232,10 @@ def validate_url(value: Any, field: str = "url", *, required: bool = True) -> st
     return url
 
 
-def _date(value: Any, field: str) -> str:
+def _date(value: Any, field: str, *, optional: bool = False) -> str:
+    """A YYYY-MM-DD date. Empty means today, or stays empty when *optional*."""
     if value in (None, ""):
-        return _today()
+        return "" if optional else _today()
     if not isinstance(value, str) or not _DATE_RE.match(value.strip()):
         raise InvalidInput(f"{field} must be a date in YYYY-MM-DD form")
     try:
@@ -238,8 +289,16 @@ class WorkspaceStore:
                 f"{path} was written by a newer OpenOSINT (schema {version}); upgrade to open it"
             )
         self._conn.executescript(_SCHEMA)
+        self._migrate()
         self._conn.execute(f"PRAGMA user_version={SCHEMA_VERSION}")
         self._conn.commit()
+
+    def _migrate(self) -> None:
+        """Add columns missing from an older database. Idempotent; never rewrites data."""
+        for table, column, decl in _V2_COLUMNS:
+            existing = {r["name"] for r in self._conn.execute(f"PRAGMA table_info({table})")}
+            if column not in existing:
+                self._conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {decl}")
 
     def close(self) -> None:
         self._conn.close()
@@ -312,7 +371,9 @@ class WorkspaceStore:
         inv["findings"] = [
             dict(r)
             for r in q(
-                "SELECT f.*, s.url AS source_url, t.kind AS target_kind, t.value AS target_value "
+                "SELECT f.*, s.url AS source_url, s.title AS source_title, "
+                "s.reliability AS source_reliability, "
+                "t.kind AS target_kind, t.value AS target_value "
                 "FROM findings f LEFT JOIN sources s ON s.id = f.source_id "
                 "LEFT JOIN targets t ON t.id = f.target_id "
                 "WHERE f.investigation_id = ? ORDER BY f.recorded_on DESC, f.created_at DESC",
@@ -329,8 +390,9 @@ class WorkspaceStore:
         inv["evidence"] = [
             dict(r)
             for r in q(
-                "SELECT e.*, s.url AS source_url, t.kind AS target_kind, t.value AS target_value, "
-                "f.title AS finding_title "
+                "SELECT e.*, s.url AS source_url, s.title AS source_title, "
+                "s.reliability AS source_reliability, "
+                "t.kind AS target_kind, t.value AS target_value, f.title AS finding_title "
                 "FROM evidence e LEFT JOIN sources s ON s.id = e.source_id "
                 "LEFT JOIN targets t ON t.id = e.target_id "
                 "LEFT JOIN findings f ON f.id = e.finding_id "
@@ -338,7 +400,36 @@ class WorkspaceStore:
                 (inv_id,),
             )
         ]
+        _link_traces(inv)
         return inv
+
+    def trace_source(self, inv_id: str, source_id: str) -> dict:
+        """What relies on a source: findings citing it, its evidence, findings that evidence supports."""
+        inv = self.get_workspace(inv_id)
+        source = _find(inv["sources"], source_id, "source")
+        findings = {f["id"]: f for f in inv["findings"]}
+        evidence = [e for e in inv["evidence"] if e["source_id"] == source["id"]]
+        via = [
+            findings[i] for i in source["supported_finding_ids"] if i not in source["finding_ids"]
+        ]
+        return {
+            "source": source,
+            "findings": [findings[i] for i in source["finding_ids"]],
+            "evidence": evidence,
+            "findings_via_evidence": via,
+        }
+
+    def trace_finding(self, inv_id: str, finding_id: str) -> dict:
+        """What a finding rests on: its own source and the evidence linked to it, with theirs."""
+        inv = self.get_workspace(inv_id)
+        finding = _find(inv["findings"], finding_id, "finding")
+        sources = {s["id"]: s for s in inv["sources"]}
+        evidence = [e for e in inv["evidence"] if e["finding_id"] == finding["id"]]
+        return {
+            "finding": finding,
+            "source": sources.get(finding["source_id"]),
+            "evidence": [dict(e, source=sources.get(e["source_id"])) for e in evidence],
+        }
 
     def update_investigation(self, inv_id: str, fields: dict) -> dict:
         self.get_investigation(inv_id)
@@ -497,12 +588,38 @@ class WorkspaceStore:
                 out["notes"] = _text(data.get("notes"), "notes", max_len=TEXT_MAX)
 
         elif section == "sources":
+            current = (
+                self._conn.execute("SELECT * FROM sources WHERE id = ?", (item_id,)).fetchone()
+                if partial
+                else None
+            )
             if has("url"):
-                out["url"] = validate_url(data.get("url"), "url")
+                url = validate_url(data.get("url"), "url")
+                # The URL is the source's identity: findings and evidence cite it. Keep it as
+                # first recorded; a different URL is a different source.
+                if current is not None and url != current["url"]:
+                    raise InvalidInput(
+                        "a source's URL cannot be changed; add the new URL as another source"
+                    )
+                if current is None:
+                    out["url"] = url
             if has("title"):
                 out["title"] = _text(data.get("title"), "title", max_len=TITLE_MAX)
             if has("notes"):
                 out["notes"] = _text(data.get("notes"), "notes", max_len=TEXT_MAX)
+            if has("source_type"):
+                out["source_type"] = _choice(
+                    data.get("source_type") or "unspecified", "source_type", SOURCE_TYPES
+                )
+            if has("original_url"):
+                out["original_url"] = validate_url(
+                    data.get("original_url"), "original_url", required=False
+                )
+            if has("published_on"):
+                out["published_on"] = _date(data.get("published_on"), "published_on", optional=True)
+            if has("accessed_on"):
+                out["accessed_on"] = _date(data.get("accessed_on"), "accessed_on", optional=True)
+            out.update(self._reliability(data, current, partial=partial))
 
         elif section == "findings":
             if has("title"):
@@ -546,5 +663,58 @@ class WorkspaceStore:
                 out["collected_on"] = _date(data.get("collected_on"), "collected_on")
             if has("notes"):
                 out["notes"] = _text(data.get("notes"), "notes", max_len=TEXT_MAX)
+            if has("kind"):
+                out["kind"] = _choice(data.get("kind") or "unspecified", "kind", EVIDENCE_KINDS)
 
         return out
+
+    @staticmethod
+    def _reliability(data: dict, current: sqlite3.Row | None, *, partial: bool) -> dict:
+        """Reliability columns to write. A rating needs a rationale; its date is today's."""
+        if partial and "reliability" not in data and "reliability_rationale" not in data:
+            return {}
+        old_rating = current["reliability"] if current is not None else "unassessed"
+        old_rationale = current["reliability_rationale"] if current is not None else ""
+        raw = data.get("reliability", old_rating if partial else None) or "unassessed"
+        if not isinstance(raw, str) or raw.strip().upper() not in {
+            r.upper() for r in RELIABILITY_RATINGS
+        }:
+            raise InvalidInput(f"reliability must be one of: {', '.join(RELIABILITY_RATINGS)}")
+        rating = "unassessed" if raw.strip().lower() == "unassessed" else raw.strip().upper()
+        rationale = (
+            _text(data.get("reliability_rationale"), "reliability_rationale", max_len=TEXT_MAX)
+            if "reliability_rationale" in data
+            else old_rationale
+        )
+        if rating != "unassessed" and not rationale:
+            raise InvalidInput(
+                "a reliability rating needs a rationale: say why in reliability_rationale"
+            )
+        out = {"reliability": rating, "reliability_rationale": rationale}
+        if rating == "unassessed":
+            out["reliability_assessed_on"] = ""
+        elif rating != old_rating or rationale != old_rationale or current is None:
+            out["reliability_assessed_on"] = _today()
+        return out
+
+
+def _find(items: list[dict], item_id: str, what: str) -> dict:
+    found = next((i for i in items if i["id"] == item_id), None) if is_valid_id(item_id) else None
+    if found is None:
+        raise NotFound(f"{what} not found")
+    return found
+
+
+def _link_traces(inv: dict) -> None:
+    """Add the ids that connect sources, findings and evidence, for display and tracing."""
+    for f in inv["findings"]:
+        f["evidence_ids"] = [e["id"] for e in inv["evidence"] if e["finding_id"] == f["id"]]
+    for s in inv["sources"]:
+        s["finding_ids"] = [f["id"] for f in inv["findings"] if f["source_id"] == s["id"]]
+        s["evidence_ids"] = [e["id"] for e in inv["evidence"] if e["source_id"] == s["id"]]
+        supported = [
+            e["finding_id"]
+            for e in inv["evidence"]
+            if e["source_id"] == s["id"] and e["finding_id"]
+        ]
+        s["supported_finding_ids"] = list(dict.fromkeys(s["finding_ids"] + supported))

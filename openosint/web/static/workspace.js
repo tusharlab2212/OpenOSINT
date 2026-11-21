@@ -12,13 +12,45 @@ import { safeHttpUrl } from '/static/url-safety.js';
 
 export const TARGET_KINDS = ['username', 'domain', 'email', 'url', 'ip', 'phone', 'other'];
 export const CONFIDENCE_LEVELS = ['low', 'medium', 'high'];
-export const FINDING_KINDS = ['observation', 'assumption', 'conclusion'];
+export const FINDING_KINDS = ['observation', 'reported', 'assumption', 'conclusion'];
 
 export const FINDING_KIND_LABELS = {
-  observation: 'Observations — what a source shows',
+  observation: 'Direct observations — what you saw in a source yourself',
+  reported: 'Reported claims — what a source says, not verified by you',
   assumption: 'Assumptions — not yet supported by a source',
-  conclusion: 'Conclusions — what you infer from the observations',
+  conclusion: 'Analyst conclusions — what you infer from the above',
 };
+
+/** Short provenance names, used in selects and badges. */
+export const PROVENANCE_LABELS = {
+  unspecified: 'Not specified',
+  observation: 'Direct observation',
+  reported: 'Source-reported claim',
+  assumption: 'Assumption',
+  conclusion: 'Analyst conclusion',
+};
+
+// Entries saved before provenance existed are "unspecified"; new ones are chosen by you.
+export const EVIDENCE_KINDS = ['unspecified', 'observation', 'reported'];
+
+export const SOURCE_TYPES = [
+  'unspecified', 'website', 'social_media', 'news', 'government', 'company', 'court_record',
+  'dataset', 'archive', 'document', 'other',
+];
+
+/** A–F source reliability. Assigned by the investigator only, always with a rationale. */
+export const RELIABILITY_LABELS = {
+  unassessed: 'Not assessed',
+  A: 'A — Completely reliable',
+  B: 'B — Usually reliable',
+  C: 'C — Fairly reliable',
+  D: 'D — Not usually reliable',
+  E: 'E — Unreliable',
+  F: 'F — Reliability cannot be judged',
+};
+export const RELIABILITY_RATINGS = Object.keys(RELIABILITY_LABELS);
+
+const labelled = (values, labels) => values.map((v) => [v, labels[v] || v]);
 
 export const TABS = [
   { id: 'overview', label: 'Overview' },
@@ -39,7 +71,8 @@ export const FIELDS = {
   ],
   findings: [
     { name: 'title', label: 'Title', type: 'text', required: true, max: 200 },
-    { name: 'kind', label: 'Type', type: 'select', options: FINDING_KINDS, required: true },
+    { name: 'kind', label: 'Provenance', type: 'select',
+      options: labelled(FINDING_KINDS, PROVENANCE_LABELS), required: true },
     { name: 'confidence', label: 'Confidence', type: 'select', options: CONFIDENCE_LEVELS,
       required: true },
     { name: 'description', label: 'Description', type: 'textarea' },
@@ -50,6 +83,8 @@ export const FIELDS = {
   ],
   evidence: [
     { name: 'description', label: 'Description', type: 'textarea', required: true },
+    { name: 'kind', label: 'Provenance', type: 'select',
+      options: labelled(EVIDENCE_KINDS, PROVENANCE_LABELS), required: true },
     { name: 'source_url', label: 'Source URL', type: 'url', placeholder: 'https://…' },
     { name: 'collected_on', label: 'Date collected', type: 'date' },
     { name: 'target_id', label: 'Target', type: 'ref', ref: 'targets' },
@@ -57,8 +92,18 @@ export const FIELDS = {
     { name: 'notes', label: 'Notes', type: 'textarea' },
   ],
   sources: [
-    { name: 'url', label: 'URL', type: 'url', required: true, placeholder: 'https://…' },
-    { name: 'title', label: 'Title', type: 'text', max: 200 },
+    // The URL identifies the source and is kept as first recorded (read-only when editing).
+    { name: 'url', label: 'URL (where you accessed it)', type: 'url', required: true,
+      placeholder: 'https://…', lockedOnEdit: true },
+    { name: 'title', label: 'Source title', type: 'text', max: 200 },
+    { name: 'source_type', label: 'Source type', type: 'select', options: SOURCE_TYPES },
+    { name: 'original_url', label: 'Original URL (if the URL above is a copy or archive)',
+      type: 'url', placeholder: 'https://…' },
+    { name: 'published_on', label: 'Published / observed on', type: 'date' },
+    { name: 'accessed_on', label: 'Date accessed', type: 'date' },
+    { name: 'reliability', label: 'Reliability (your assessment)', type: 'select',
+      options: labelled(RELIABILITY_RATINGS, RELIABILITY_LABELS) },
+    { name: 'reliability_rationale', label: 'Why this rating', type: 'textarea' },
     { name: 'notes', label: 'Notes', type: 'textarea' },
   ],
   notes: [{ name: 'body', label: 'Note', type: 'textarea', required: true }],
@@ -69,7 +114,8 @@ export function defaultsFor(section, today = todayIso()) {
   if (section === 'findings') {
     return { kind: 'observation', confidence: 'low', recorded_on: today };
   }
-  if (section === 'evidence') return { collected_on: today };
+  if (section === 'evidence') return { kind: 'observation', collected_on: today };
+  if (section === 'sources') return { source_type: 'unspecified', reliability: 'unassessed' };
   if (section === 'targets') return { kind: 'domain' };
   return {};
 }
@@ -106,7 +152,35 @@ export function validateForm(section, values) {
       return `${field.label} must be an http:// or https:// URL.`;
     }
   }
+  if (section === 'sources') {
+    const rating = String(values.reliability ?? 'unassessed');
+    if (rating !== 'unassessed' && !String(values.reliability_rationale ?? '').trim()) {
+      return 'Explain the reliability rating in "Why this rating".';
+    }
+  }
   return '';
+}
+
+export function reliabilityLabel(rating) {
+  return RELIABILITY_LABELS[rating] || RELIABILITY_LABELS.unassessed;
+}
+
+/** What relies on a source (mirrors GET …/sources/{id}/trace). */
+export function sourceTrace(inv, sourceId) {
+  const evidence = (inv.evidence || []).filter((e) => e.source_id === sourceId);
+  const direct = (inv.findings || []).filter((f) => f.source_id === sourceId);
+  const directIds = new Set(direct.map((f) => f.id));
+  const viaIds = new Set(evidence.map((e) => e.finding_id).filter((id) => id && !directIds.has(id)));
+  const viaEvidence = (inv.findings || []).filter((f) => viaIds.has(f.id));
+  return { findings: direct, evidence, viaEvidence };
+}
+
+/** The evidence linked to a finding, each with its source (mirrors …/findings/{id}/trace). */
+export function findingSupport(inv, findingId) {
+  const sources = new Map((inv.sources || []).map((s) => [s.id, s]));
+  return (inv.evidence || [])
+    .filter((e) => e.finding_id === findingId)
+    .map((e) => ({ ...e, source: sources.get(e.source_id) || null }));
 }
 
 /** Findings grouped by kind, in a fixed order; unknown kinds fall under observations. */
@@ -299,7 +373,7 @@ export function init(root = document) {
     return [];
   }
 
-  function buildForm(fields, values, { submitLabel, onSubmit, onCancel, testid }) {
+  function buildForm(fields, values, { submitLabel, onSubmit, onCancel, testid, editing = false }) {
     const inputs = {};
     const message = el('p', { class: 'form-error', hidden: true });
     const rows = fields.map((field) => {
@@ -311,7 +385,9 @@ export function init(root = document) {
         input = el('select', { id });
         if (field.type === 'ref') input.append(el('option', { value: '', text: '— none —' }));
         const options =
-          field.type === 'ref' ? refOptions(field.ref) : field.options.map((o) => [o, o]);
+          field.type === 'ref'
+            ? refOptions(field.ref)
+            : field.options.map((o) => (Array.isArray(o) ? o : [o, o]));
         for (const [value, label] of options) input.append(el('option', { value, text: label }));
       } else {
         input = el('input', {
@@ -327,6 +403,10 @@ export function init(root = document) {
       input.name = field.name;
       input.value = values[field.name] ?? '';
       if (field.required) input.required = true;
+      if (editing && field.lockedOnEdit) {
+        input.readOnly = true;
+        input.title = 'Kept as first recorded. Add a different URL as a new source.';
+      }
       inputs[field.name] = input;
       return el('label', { class: 'field', for: id }, el('span', { text: field.label }), input);
     });
@@ -358,6 +438,7 @@ export function init(root = document) {
     const editing = !!item;
     const values = editing ? { ...item } : defaultsFor(section);
     return buildForm(FIELDS[section], values, {
+      editing,
       submitLabel: editing ? 'Save' : 'Add',
       testid: `${section}-${editing ? 'edit' : 'add'}-form`,
       onCancel: editing
@@ -466,24 +547,22 @@ export function init(root = document) {
         return renderFindings(inv);
       case 'evidence':
         return renderSection('evidence', 'evidence entry', inv.evidence, (e) => [
-          el('p', { class: 'pre card-title', text: e.description }),
+          el('div', { class: 'card-title' }, provenanceBadge(e.kind)),
+          el('p', { class: 'pre', text: e.description }),
           meta([
             ['Collected', e.collected_on],
-            ['Source', link(e.source_url)],
+            ['Source', sourceRef(e.source_url, e.source_reliability)],
             ['Target', targetLabel(e.target_kind, e.target_value)],
-            ['Supports finding', e.finding_title],
+            ['Supports finding', e.finding_id ? jump('findings', e.finding_id, e.finding_title) : ''],
           ]),
           e.notes ? el('p', { class: 'pre muted', text: e.notes }) : null,
-        ]);
+        ], 'Provenance: a direct observation is what you saw yourself; a source-reported claim ' +
+           'is what the source says.');
       case 'sources':
-        return renderSection('sources', 'source', inv.sources, (s) => [
-          el('div', { class: 'card-title' }, link(s.url)),
-          s.title ? el('p', { text: s.title }) : null,
-          meta([
-            ['Used by', `${s.finding_count} finding(s), ${s.evidence_count} evidence entr${s.evidence_count === 1 ? 'y' : 'ies'}`],
-          ]),
-          s.notes ? el('p', { class: 'pre muted', text: s.notes }) : null,
-        ], 'Findings and evidence with a source URL add it here automatically.');
+        return renderSection('sources', 'source', inv.sources, (s) => renderSourceCard(inv, s),
+          'Findings and evidence with a source URL add it here automatically (type and ' +
+          'reliability start unassessed). Reliability is your own judgement of the source; ' +
+          'OpenOSINT never sets it.');
       case 'notes':
         return renderSection('notes', 'note', inv.notes, (n) => [
           el('p', { class: 'pre', text: n.body }),
@@ -492,6 +571,79 @@ export function init(root = document) {
       default:
         return renderOverview(inv);
     }
+  }
+
+  function provenanceBadge(kind) {
+    const k = kind || 'unspecified';
+    return el('span', { class: `prov ${k}`, text: PROVENANCE_LABELS[k] || PROVENANCE_LABELS.unspecified });
+  }
+
+  function reliabilityBadge(rating) {
+    const r = RELIABILITY_LABELS[rating] ? rating : 'unassessed';
+    return el('span', {
+      class: `rel rel-${r}`,
+      title: reliabilityLabel(r),
+      text: r === 'unassessed' ? 'unassessed' : r,
+    });
+  }
+
+  function sourceRef(url, rating) {
+    const a = link(url);
+    return a ? el('span', {}, a, ' ', reliabilityBadge(rating)) : null;
+  }
+
+  /** A button that opens another item of the investigation. */
+  function jump(section, id, label) {
+    return el('button', {
+      class: 'linkish',
+      dataset: { jump: section, target: id },
+      text: label || '(untitled)',
+      onclick: () => focusItem(section, id),
+    });
+  }
+
+  function focusItem(section, id) {
+    state.tab = section;
+    state.editing = null;
+    render();
+    const node = root.querySelector(`[data-testid="${section}-item"][data-id="${CSS.escape(id)}"]`);
+    if (!node) return;
+    node.scrollIntoView({ block: 'center' });
+    node.classList.add('flash');
+    setTimeout(() => node.classList.remove('flash'), 1600);
+  }
+
+  function traceList(title, items, renderItem) {
+    if (!items.length) return null;
+    return el('div', { class: 'trace' }, el('div', { class: 'trace-title', text: title }),
+      el('ul', {}, items.map((item) => el('li', {}, renderItem(item)))));
+  }
+
+  function renderSourceCard(inv, s) {
+    const trace = sourceTrace(inv, s.id);
+    const original = s.original_url && s.original_url !== s.url ? link(s.original_url) : null;
+    return [
+      el('div', { class: 'card-title' }, reliabilityBadge(s.reliability), ' ', link(s.url)),
+      s.title ? el('p', { text: s.title }) : null,
+      meta([
+        ['Type', s.source_type && s.source_type !== 'unspecified' ? s.source_type.replace('_', ' ') : ''],
+        ['Original URL', original],
+        ['Published / observed', s.published_on],
+        ['Accessed', s.accessed_on],
+        ['Reliability', reliabilityLabel(s.reliability)],
+        ['Assessed on', s.reliability_assessed_on],
+      ]),
+      s.reliability_rationale
+        ? el('p', { class: 'pre muted' }, el('em', { text: 'Why: ' }), s.reliability_rationale)
+        : null,
+      traceList(`Cited by ${trace.findings.length} finding(s)`, trace.findings,
+        (f) => [provenanceBadge(f.kind), ' ', jump('findings', f.id, f.title)]),
+      traceList(`Evidence from this source (${trace.evidence.length})`, trace.evidence,
+        (e) => [provenanceBadge(e.kind), ' ', jump('evidence', e.id, e.description.slice(0, 80))]),
+      traceList('Also supports, through that evidence', trace.viaEvidence,
+        (f) => jump('findings', f.id, f.title)),
+      s.notes ? el('p', { class: 'pre muted', text: s.notes }) : null,
+    ];
   }
 
   function meta(pairs) {
@@ -546,8 +698,9 @@ export function init(root = document) {
       'div',
       {},
       addBlock('findings', 'finding',
-        'Record the type honestly: an observation is what a source shows; assumptions and ' +
-        'conclusions are yours. Confidence starts at low — raise it only when the evidence supports it.'),
+        'Record provenance honestly: a direct observation is what you saw yourself; a reported ' +
+        'claim is what a source says; assumptions and conclusions are yours. Confidence starts ' +
+        'at low — raise it only when the evidence supports it.'),
     );
     if (!inv.findings.length) wrap.append(el('p', { class: 'muted', text: 'No findings yet.' }));
     const groups = groupFindings(inv.findings);
@@ -563,9 +716,13 @@ export function init(root = document) {
             f.description ? el('p', { class: 'pre', text: f.description }) : null,
             meta([
               ['Recorded', f.recorded_on],
-              ['Source', link(f.source_url)],
+              ['Source', sourceRef(f.source_url, f.source_reliability)],
               ['Target', targetLabel(f.target_kind, f.target_value)],
             ]),
+            traceList(`Supporting evidence (${(f.evidence_ids || []).length})`,
+              findingSupport(inv, f.id),
+              (e) => [provenanceBadge(e.kind), ' ', jump('evidence', e.id, e.description.slice(0, 80)),
+                e.source ? [' — ', sourceRef(e.source.url, e.source.reliability)] : '']),
             f.notes ? el('p', { class: 'pre muted' }, el('em', { text: 'Notes: ' }), f.notes) : null,
           ]),
         );

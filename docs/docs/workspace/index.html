@@ -183,15 +183,15 @@
 </tr>
 <tr>
 <td>Findings</td>
-<td>Your findings, each with a title, description, type, confidence, source URL, target, date recorded and investigator notes</td>
+<td>Your findings, each with a title, description, provenance, confidence, source URL, target, date recorded and investigator notes, plus the evidence that supports it</td>
 </tr>
 <tr>
 <td>Evidence</td>
-<td>Evidence entries: a description, source URL, date collected, and optionally the target and the finding it supports</td>
+<td>Evidence entries: a description, provenance, source URL, date collected, and optionally the target and the finding it supports</td>
 </tr>
 <tr>
 <td>Sources</td>
-<td>Every source URL the findings and evidence rely on, with how many of each use it. You can also add a source by hand.</td>
+<td>Every source the findings and evidence rely on, with its type, dates, your reliability rating and what cites it. You can also add a source by hand.</td>
 </tr>
 <tr>
 <td>Notes</td>
@@ -200,18 +200,103 @@
 </tbody>
 </table></div>
 <p>Every item can be edited and deleted. Deleting a target, source or finding removes the link from the items that pointed to it; the items themselves stay.</p>
-<h2 id="findings-observation-assumption-or-conclusion">Findings: observation, assumption or conclusion</h2>
-<p>Each finding has a type, and the Findings tab groups them so the difference stays visible:</p>
+<h2 id="provenance-observation-reported-claim-assumption-or-conclusion">Provenance: observation, reported claim, assumption or conclusion</h2>
+<p>Each finding records where it comes from, and the Findings tab groups them so the difference stays visible:</p>
 <ul>
-<li><strong>Observation</strong>: what a source shows. Give it a source URL.</li>
+<li><strong>Direct observation</strong>: what you saw in a source yourself. Give it a source URL.</li>
+<li><strong>Source-reported claim</strong>: what a source says, which you have not verified. Give it a source URL.</li>
 <li><strong>Assumption</strong>: something you take as given but have not supported with a source.</li>
-<li><strong>Conclusion</strong>: what you infer from the observations.</li>
+<li><strong>Analyst conclusion</strong>: what you infer from the above.</li>
 </ul>
+<p>Evidence entries have a provenance too: <strong>direct observation</strong> or <strong>source-reported claim</strong>. Evidence saved before this field existed shows <strong>not specified</strong>; it is never guessed.</p>
 <p>Confidence is <strong>low</strong>, <strong>medium</strong> or <strong>high</strong>. A new finding starts at <strong>low</strong>, and nothing raises it for you: set it yourself when the evidence supports it, not because a tool returned a result.</p>
 <h2 id="sources">Sources</h2>
 <p>A source URL typed into a finding or an evidence entry is added to the Sources tab automatically, or linked to the existing source with the same URL. Only <code>http://</code> and <code>https://</code> URLs are accepted. URLs are stored, never fetched.</p>
+<p>A source records:</p>
+<div class="table-wrap" tabindex="0" role="region" aria-label="Table"><table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>URL</td>
+<td>Where you accessed it. Kept exactly as first entered and read-only afterwards, because findings and evidence cite it: a different URL is a different source.</td>
+</tr>
+<tr>
+<td>Source title</td>
+<td>The page or document title</td>
+</tr>
+<tr>
+<td>Source type</td>
+<td>website, social media, news, government, company, court record, dataset, archive, document, other, or unspecified</td>
+</tr>
+<tr>
+<td>Original URL</td>
+<td>Where the content originally lived, when the URL above is a copy or an archive</td>
+</tr>
+<tr>
+<td>Published / observed on</td>
+<td>When the source published the content, or when you observed it</td>
+</tr>
+<tr>
+<td>Date accessed</td>
+<td>When you accessed it</td>
+</tr>
+<tr>
+<td>Reliability</td>
+<td>Your assessment, below</td>
+</tr>
+</tbody>
+</table></div>
+<h3 id="reliability">Reliability</h3>
+<p>Reliability uses the A–F scale common in intelligence source grading:</p>
+<div class="table-wrap" tabindex="0" role="region" aria-label="Table"><table>
+<thead>
+<tr>
+<th>Rating</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>A</td>
+<td>Completely reliable</td>
+</tr>
+<tr>
+<td>B</td>
+<td>Usually reliable</td>
+</tr>
+<tr>
+<td>C</td>
+<td>Fairly reliable</td>
+</tr>
+<tr>
+<td>D</td>
+<td>Not usually reliable</td>
+</tr>
+<tr>
+<td>E</td>
+<td>Unreliable</td>
+</tr>
+<tr>
+<td>F</td>
+<td>Reliability cannot be judged</td>
+</tr>
+</tbody>
+</table></div>
+<p>Every source starts <strong>not assessed</strong>, including those added automatically. Only you set a rating, and a rating needs a written rationale ("Why this rating"), which is shown with it. The date of the assessment is recorded when you set or change the rating or rationale. OpenOSINT never rates a source and never changes your rating. The rating describes the source, not any one claim in it: record how far you trust a claim in the finding's confidence.</p>
+<h3 id="tracing">Tracing</h3>
+<ul>
+<li>A source card lists the findings that cite it, the evidence taken from it, and the findings that evidence supports.</li>
+<li>A finding card lists its supporting evidence with each entry's provenance, source and source rating.</li>
+<li>Finding and evidence cards show the cited source's rating next to its link.</li>
+</ul>
+<p>Click any listed item to open it.</p>
 <h2 id="where-the-data-is">Where the data is</h2>
-<p>Everything is in <code>workspace.db</code>, a SQLite file in the data directory (<code>~/.openosint/</code>, or <code>$OPENOSINT_HOME</code>). It persists across restarts. Like the rest of the data directory, a new directory is created owner-only (0700) and the new database file 0600. Nothing is sent anywhere. Back up or move an investigation by copying that file while OpenOSINT is not running.</p>
+<p>Everything is in <code>workspace.db</code>, a SQLite file in the data directory (<code>~/.openosint/</code>, or <code>$OPENOSINT_HOME</code>). It persists across restarts. A database from an earlier version is upgraded in place the first time it is opened: new fields are added empty or unassessed, and nothing already saved is changed. An older OpenOSINT cannot open it afterwards. Like the rest of the data directory, a new directory is created owner-only (0700) and the new database file 0600. Nothing is sent anywhere. Back up or move an investigation by copying that file while OpenOSINT is not running.</p>
 <h2 id="api">API</h2>
 <p>The page uses these local routes, which you can also call from a script on the same machine:</p>
 <div class="table-wrap" tabindex="0" role="region" aria-label="Table"><table>
@@ -254,6 +339,14 @@
 <td><code>DELETE /api/investigations/{id}/{tab}/{item_id}</code></td>
 <td>Delete an item</td>
 </tr>
+<tr>
+<td><code>GET /api/investigations/{id}/sources/{item_id}/trace</code></td>
+<td>A source with the findings that cite it, its evidence, and the findings that evidence supports</td>
+</tr>
+<tr>
+<td><code>GET /api/investigations/{id}/findings/{item_id}/trace</code></td>
+<td>A finding with its source and its supporting evidence, each with its source</td>
+</tr>
 </tbody>
 </table></div>
 <p>Invalid input gets a 422 with the reason, an unknown id a 404, and a duplicate target or source URL a 409. Browser requests from another origin are rejected, as for every <code>/api</code> route.</p>
@@ -262,6 +355,8 @@
 <li>One user, one machine: there are no accounts, sharing or sync.</li>
 <li>Findings are not created from chat or tool results automatically; you record them.</li>
 <li>Evidence is a description and a link, not a stored copy: attaching files or archived snapshots is not supported yet.</li>
+<li>Reliability is one rating per source. There is no separate rating per claim, and no history of earlier ratings: changing a rating replaces it (the new rationale and date are what you see).</li>
+<li>A source's URL cannot be corrected after it is saved; add the right URL as a new source and move the links.</li>
 <li>No export yet. The data is a plain SQLite file you can read with any SQLite tool.</li>
 </ul>
       <nav class="pager" aria-label="Previous and next page"><a class="prev" href="/docs/web-ui/" rel="prev"><small>Previous</small>Web UI</a><a class="next" href="/docs/configuration/" rel="next"><small>Next</small>Configuration</a>
