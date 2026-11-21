@@ -104,5 +104,16 @@ const sup = ws.findingSupport(inv, 'f2');
 assert(eq(sup.map((e) => [e.id, e.source.url]), [['e1', 'https://example.com/a'], ['e3', 'https://example.com/b']]), 'supporting evidence with its sources');
 assert(eq(ws.sourceTrace({}, 'x'), { findings: [], evidence: [], viaEvidence: [] }), 'empty investigation traces to nothing');
 
+console.log('\nreport settings');
+assert(!ws.DEFAULT_REPORT_SECTIONS.includes('notes') && ws.DEFAULT_REPORT_SECTIONS.length === 9, 'notes are opt-in');
+const url = new URL(ws.reportUrl('abc', { title: ' My report ', subtitle: '', sections: ['notes', 'findings', 'bogus'] }), 'http://x');
+assert(url.pathname === '/api/investigations/abc/report', 'local report path');
+assert(url.searchParams.get('sections') === 'findings,notes', 'known sections only, in report order');
+assert(url.searchParams.get('title') === 'My report' && !url.searchParams.has('subtitle'), 'title trimmed; empty subtitle omitted');
+assert(url.searchParams.get('format') === 'html' && !url.searchParams.has('download'), 'html by default, inline');
+const pdf = new URL(ws.reportUrl('a/b?c', { format: 'pdf', download: true }), 'http://x');
+assert(pdf.pathname === '/api/investigations/a%2Fb%3Fc/report' && pdf.searchParams.get('format') === 'pdf', 'id encoded; pdf format');
+assert(pdf.searchParams.get('download') === 'true', 'download flag');
+
 console.log(`\n${passed} passed, ${failed} failed`);
 if (failed > 0) process.exit(1);

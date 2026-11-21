@@ -205,6 +205,10 @@
 <td>Notes</td>
 <td>Free-form investigator notes</td>
 </tr>
+<tr>
+<td>Report</td>
+<td>A report of the investigation, as HTML or PDF (below)</td>
+</tr>
 </tbody>
 </table></div>
 <p>Every item can be edited and deleted. Deleting a target, source or finding removes the link from the items that pointed to it; the items themselves stay.</p>
@@ -398,6 +402,26 @@
 <li>Deleting an entity deletes its relationships, and asks first, naming how many. Deleting a relationship asks first too. Deleting a finding or evidence entry removes it from the relationships that cited it.</li>
 </ul>
 <p>New entities without a saved position are placed automatically next to the existing ones. Larger graphs hide small labels until you zoom in and simplify drawing while you pan.</p>
+<h2 id="reports">Reports</h2>
+<p>The <strong>Report</strong> tab assembles a report from what you recorded. It is an assembly, not an analysis: nothing is summarised, inferred, dated or verified, missing values are left out rather than filled in, and every confidence level and reliability rating is labelled as investigator-assigned. Reports are generated on this computer.</p>
+<p>Choose the sections to include, in this fixed order: investigation overview, targets, entities, relationships, findings, evidence, sources, timeline, correlations and analyst notes. <strong>Analyst notes are off by default</strong>; including them adds the Notes section and the notes on every item. You can set a title and a subtitle; the title defaults to the investigation's.</p>
+<ul>
+<li><strong>Preview</strong> shows the report inside the page (in a sandboxed frame that runs nothing).</li>
+<li><strong>Open in a new tab</strong> shows the HTML report on its own, ready to print. The browser's <em>Print → Save as PDF</em> gives a PDF of exactly this layout.</li>
+<li><strong>Download HTML</strong> saves a single self-contained file: no scripts, no remote content, and a Content-Security-Policy that keeps it that way.</li>
+<li><strong>Download PDF</strong> builds a PDF on the server with reportlab (already a dependency).</li>
+</ul>
+<p>What the report shows:</p>
+<ul>
+<li>A short legend explaining provenance, investigator-assigned confidence and reliability, and that relationships and correlations are hypotheses unless documented.</li>
+<li>Each item with a reference: T targets, N entities, R relationships, F findings, E evidence, S sources, V events, C correlations, M notes. Cross-references link to the referenced item when its section is included; otherwise the item is named (or its URL shown) without a link.</li>
+<li>Findings grouped by provenance (direct observations, source-reported claims, assumptions, analyst conclusions) with their confidence, source and the source's reliability, target and supporting evidence.</li>
+<li>Evidence with provenance, collection date, source, target, the finding it supports and the relationships that cite it.</li>
+<li>Sources with their URL, original URL, type, dates, reliability (or "Not assessed") with rationale and date, and what cites them.</li>
+<li>The timeline in date order with approximate dates marked ≈ and ranges as start → end; correlations labelled analyst hypothesis or documented, with "time order is not causation".</li>
+<li>Warnings recorded on items, such as a documented relationship whose citations were deleted.</li>
+</ul>
+<p>The local API is <code>GET /api/investigations/{id}/report</code> with <code>format</code> (<code>html</code> or <code>pdf</code>), <code>sections</code> (comma-separated), <code>title</code>, <code>subtitle</code> and <code>download=true</code> (HTML as an attachment). Unknown sections, an unknown format or a title over 200 characters get a 422.</p>
 <h2 id="where-the-data-is">Where the data is</h2>
 <p>Everything is in <code>workspace.db</code>, a SQLite file in the data directory (<code>~/.openosint/</code>, or <code>$OPENOSINT_HOME</code>). It persists across restarts. A database from an earlier version is upgraded in place the first time it is opened: new fields and the graph and timeline tables are added empty or unassessed, and nothing already saved is changed. An older OpenOSINT cannot open it afterwards. Like the rest of the data directory, a new directory is created owner-only (0700) and the new database file 0600. Nothing is sent anywhere. Back up or move an investigation by copying that file while OpenOSINT is not running.</p>
 <h2 id="api">API</h2>
@@ -481,6 +505,9 @@
 <li>"Recorded by" is free text you type: there are no user accounts, so it is not verified.</li>
 <li>The timeline is a list, not a scaled chart: distance on screen does not show time. Events are grouped by the month of their start date.</li>
 <li>Recurring events, uncertainty margins ("± 3 days") and time zones on approximate dates are not supported; use the notes.</li>
+<li>Reports are generated from the current data each time; there is no saved report history or versioning, and no Word or Markdown export.</li>
+<li>The PDF uses reportlab's built-in fonts, which cover Latin-script text. Text in other scripts (Cyrillic, Arabic, Chinese and others) may not display in the PDF; use the HTML report, or print it to PDF from the browser, for those. A few symbols are written out in the PDF (≈ as "approx.", → as "-&gt;").</li>
+<li>Reports contain no images or graph drawing: the entity graph is listed as entities and relationships.</li>
 <li>The date filters compare with each event's sort key (UTC when a time zone is given), so an event late in the day in a time zone west of UTC can fall on the next day for filtering.</li>
 <li>Very large graphs (thousands of elements) stay usable but slower; the relationship list then becomes the practical view.</li>
 <li>No export yet. The data is a plain SQLite file you can read with any SQLite tool.</li>

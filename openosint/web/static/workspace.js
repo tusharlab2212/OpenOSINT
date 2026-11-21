@@ -72,6 +72,7 @@ export const TABS = [
   { id: 'timeline', label: 'Timeline', count: 'events' },
   { id: 'graph', label: 'Graph', count: 'entities' },
   { id: 'notes', label: 'Notes' },
+  { id: 'report', label: 'Report', noCount: true },
 ];
 
 /** Form fields per section. `ref` fields are filled with the investigation's own items. */
@@ -311,6 +312,26 @@ export function targetLabel(kind, value) {
 }
 
 /** Deleting an investigation requires typing its exact title. */
+/** Report sections, in report order. Analyst notes are opt-in. */
+export const REPORT_SECTIONS = [
+  ['overview', 'Investigation overview'], ['targets', 'Targets'], ['entities', 'Entities'],
+  ['relationships', 'Relationships'], ['findings', 'Findings'], ['evidence', 'Evidence'],
+  ['sources', 'Sources'], ['timeline', 'Timeline'], ['correlations', 'Correlations'],
+  ['notes', 'Analyst notes'],
+];
+export const DEFAULT_REPORT_SECTIONS = REPORT_SECTIONS.map(([k]) => k).filter((k) => k !== 'notes');
+
+/** The local report URL for an investigation (GET; built from the chosen settings only). */
+export function reportUrl(invId, { format = 'html', sections = DEFAULT_REPORT_SECTIONS, title = '', subtitle = '', download = false } = {}) {
+  const params = new URLSearchParams({ format });
+  const known = REPORT_SECTIONS.map(([k]) => k);
+  params.set('sections', known.filter((k) => sections.includes(k)).join(','));
+  if (String(title).trim()) params.set('title', String(title).trim());
+  if (String(subtitle).trim()) params.set('subtitle', String(subtitle).trim());
+  if (download) params.set('download', 'true');
+  return `/api/investigations/${encodeURIComponent(invId)}/report?${params}`;
+}
+
 export function deleteConfirmed(title, typed) {
   return typeof typed === 'string' && typed.trim() === String(title).trim() && typed.trim() !== '';
 }
@@ -392,6 +413,7 @@ export function init(root = document) {
     const data = await guard(() => api('GET', `/api/investigations/${encodeURIComponent(id)}`));
     if (!data) return;
     if (!state.current || state.current.id !== data.id) {
+      Object.assign(reportSettings, { sections: [...DEFAULT_REPORT_SECTIONS], title: '', subtitle: '' });
       Object.assign(timeline, { filters: {}, shown: PAGE_SIZE, selected: null, form: null, compare: new Set() });
       graphView.viewport = null;
       graphView.selected = null;
@@ -648,7 +670,7 @@ export function init(root = document) {
         'nav',
         { class: 'tabs', role: 'tablist' },
         TABS.map((tab) => {
-          const count = tab.id === 'overview' ? null : inv[tab.count || tab.id].length;
+          const count = tab.id === 'overview' || tab.noCount ? null : inv[tab.count || tab.id].length;
           return el(
             'button',
             {
@@ -703,6 +725,8 @@ export function init(root = document) {
         return renderGraphTab(inv);
       case 'timeline':
         return renderTimelineTab(inv);
+      case 'report':
+        return renderReportTab(inv);
       case 'notes':
         return renderSection('notes', 'note', inv.notes, (n) => [
           el('p', { class: 'pre', text: n.body }),
@@ -740,6 +764,78 @@ export function init(root = document) {
       text: label || '(untitled)',
       onclick: () => focusItem(section, id),
     });
+  }
+
+  // -- report -----------------------------------------------------------------------
+
+  const reportSettings = { sections: [...DEFAULT_REPORT_SECTIONS], title: '', subtitle: '' };
+
+  function renderReportTab(inv) {
+    const links = {};
+    const message = el('p', { class: 'form-error', hidden: true, dataset: { testid: 'report-error' } });
+    const preview = el('iframe', {
+      class: 'report-preview', title: 'Report preview', sandbox: '', referrerpolicy: 'no-referrer',
+      dataset: { testid: 'report-preview' }, hidden: true,
+    });
+    const update = () => {
+      const empty = reportSettings.sections.length === 0;
+      message.textContent = empty ? 'Choose at least one section.' : '';
+      message.hidden = !empty;
+      for (const [key, opts] of Object.entries({
+        open: {}, html: { download: true }, pdf: { format: 'pdf' },
+      })) {
+        const a = links[key];
+        if (empty) {
+          a.removeAttribute('href');
+          a.setAttribute('aria-disabled', 'true');
+        } else {
+          a.href = reportUrl(inv.id, { ...reportSettings, ...opts });
+          a.removeAttribute('aria-disabled');
+        }
+      }
+      previewButton.disabled = empty;
+    };
+    const boxes = REPORT_SECTIONS.map(([key, label]) => {
+      const box = el('input', { type: 'checkbox', dataset: { section: key },
+        onchange: (e) => {
+          const set = new Set(reportSettings.sections);
+          if (e.target.checked) set.add(key); else set.delete(key);
+          reportSettings.sections = REPORT_SECTIONS.map(([k]) => k).filter((k) => set.has(k));
+          update();
+        } });
+      box.checked = reportSettings.sections.includes(key);
+      return el('label', { class: 'section-choice' }, box, ' ', label,
+        key === 'notes' ? el('span', { class: 'muted small', text: ' — your working notes, and the notes on every item. Off unless you include them.' }) : null);
+    });
+    const text = (key, label, placeholder) => {
+      const input = el('input', { type: 'text', maxlength: 200, placeholder, dataset: { report: key },
+        oninput: (e) => { reportSettings[key] = e.target.value; update(); } });
+      input.value = reportSettings[key];
+      return el('label', { class: 'field' }, el('span', { text: label }), input);
+    };
+    links.open = el('a', { class: 'button-link', target: '_blank', rel: 'noopener noreferrer', dataset: { testid: 'report-open' }, text: 'Open in a new tab' });
+    links.html = el('a', { class: 'button-link', dataset: { testid: 'report-html' }, text: 'Download HTML' });
+    links.pdf = el('a', { class: 'button-link', dataset: { testid: 'report-pdf' }, text: 'Download PDF' });
+    const previewButton = el('button', { class: 'primary', dataset: { testid: 'report-preview-button' }, text: 'Preview',
+      onclick: () => {
+        preview.src = reportUrl(inv.id, reportSettings);
+        preview.hidden = false;
+      } });
+    const wrap = el('div', { class: 'report-tab' },
+      el('p', { class: 'muted small', text:
+        'A report assembles what you recorded: nothing is summarised, inferred or verified, and ' +
+        'every confidence level and reliability rating is labelled as yours. It is generated on ' +
+        'this computer; open it in a tab to print or save it as PDF from the browser.' }),
+      el('fieldset', { class: 'report-sections', dataset: { testid: 'report-sections' } },
+        el('legend', { text: 'Sections' }), ...boxes),
+      el('div', { class: 'ws-form report-titles' },
+        text('title', 'Report title (optional)', inv.title),
+        text('subtitle', 'Subtitle (optional)', 'e.g. Prepared for internal review')),
+      message,
+      el('div', { class: 'actions' }, previewButton, links.open, links.html, links.pdf),
+      preview);
+    update();
+    return wrap;
   }
 
   // -- timeline ---------------------------------------------------------------------

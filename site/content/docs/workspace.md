@@ -35,6 +35,7 @@ The workspace only works on a local, unrestricted instance. A public or demo ins
 | Timeline | Dated events and the correlations you draw between them (below) |
 | Graph | Entities and the relationships between them, drawn as an interactive map (below) |
 | Notes | Free-form investigator notes |
+| Report | A report of the investigation, as HTML or PDF (below) |
 
 Every item can be edited and deleted. Deleting a target, source or finding removes the link from the items that pointed to it; the items themselves stay.
 
@@ -156,6 +157,29 @@ Using the graph:
 
 New entities without a saved position are placed automatically next to the existing ones. Larger graphs hide small labels until you zoom in and simplify drawing while you pan.
 
+## Reports
+
+The **Report** tab assembles a report from what you recorded. It is an assembly, not an analysis: nothing is summarised, inferred, dated or verified, missing values are left out rather than filled in, and every confidence level and reliability rating is labelled as investigator-assigned. Reports are generated on this computer.
+
+Choose the sections to include, in this fixed order: investigation overview, targets, entities, relationships, findings, evidence, sources, timeline, correlations and analyst notes. **Analyst notes are off by default**; including them adds the Notes section and the notes on every item. You can set a title and a subtitle; the title defaults to the investigation's.
+
+- **Preview** shows the report inside the page (in a sandboxed frame that runs nothing).
+- **Open in a new tab** shows the HTML report on its own, ready to print. The browser's *Print → Save as PDF* gives a PDF of exactly this layout.
+- **Download HTML** saves a single self-contained file: no scripts, no remote content, and a Content-Security-Policy that keeps it that way.
+- **Download PDF** builds a PDF on the server with reportlab (already a dependency).
+
+What the report shows:
+
+- A short legend explaining provenance, investigator-assigned confidence and reliability, and that relationships and correlations are hypotheses unless documented.
+- Each item with a reference: T targets, N entities, R relationships, F findings, E evidence, S sources, V events, C correlations, M notes. Cross-references link to the referenced item when its section is included; otherwise the item is named (or its URL shown) without a link.
+- Findings grouped by provenance (direct observations, source-reported claims, assumptions, analyst conclusions) with their confidence, source and the source's reliability, target and supporting evidence.
+- Evidence with provenance, collection date, source, target, the finding it supports and the relationships that cite it.
+- Sources with their URL, original URL, type, dates, reliability (or "Not assessed") with rationale and date, and what cites them.
+- The timeline in date order with approximate dates marked ≈ and ranges as start → end; correlations labelled analyst hypothesis or documented, with "time order is not causation".
+- Warnings recorded on items, such as a documented relationship whose citations were deleted.
+
+The local API is `GET /api/investigations/{id}/report` with `format` (`html` or `pdf`), `sections` (comma-separated), `title`, `subtitle` and `download=true` (HTML as an attachment). Unknown sections, an unknown format or a title over 200 characters get a 422.
+
 ## Where the data is
 
 Everything is in `workspace.db`, a SQLite file in the data directory (`~/.openosint/`, or `$OPENOSINT_HOME`). It persists across restarts. A database from an earlier version is upgraded in place the first time it is opened: new fields and the graph and timeline tables are added empty or unassessed, and nothing already saved is changed. An older OpenOSINT cannot open it afterwards. Like the rest of the data directory, a new directory is created owner-only (0700) and the new database file 0600. Nothing is sent anywhere. Back up or move an investigation by copying that file while OpenOSINT is not running.
@@ -195,6 +219,9 @@ Invalid input gets a 422 with the reason, an unknown id a 404, and a duplicate t
 - "Recorded by" is free text you type: there are no user accounts, so it is not verified.
 - The timeline is a list, not a scaled chart: distance on screen does not show time. Events are grouped by the month of their start date.
 - Recurring events, uncertainty margins ("± 3 days") and time zones on approximate dates are not supported; use the notes.
+- Reports are generated from the current data each time; there is no saved report history or versioning, and no Word or Markdown export.
+- The PDF uses reportlab's built-in fonts, which cover Latin-script text. Text in other scripts (Cyrillic, Arabic, Chinese and others) may not display in the PDF; use the HTML report, or print it to PDF from the browser, for those. A few symbols are written out in the PDF (≈ as "approx.", → as "->").
+- Reports contain no images or graph drawing: the entity graph is listed as entities and relationships.
 - The date filters compare with each event's sort key (UTC when a time zone is given), so an event late in the day in a time zone west of UTC can fall on the next day for filtering.
 - Very large graphs (thousands of elements) stay usable but slower; the relationship list then becomes the practical view.
 - No export yet. The data is a plain SQLite file you can read with any SQLite tool.
