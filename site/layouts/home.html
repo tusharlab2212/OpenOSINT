@@ -14,16 +14,16 @@
   <section class="section" aria-labelledby="quickstart">
     <div class="wrap">
       <h2 id="quickstart">Quickstart</h2>
-      <p class="muted">Needs <a href="https://docs.astral.sh/uv/getting-started/installation/" rel="noopener">uv</a>. No API keys for the default flow.</p>
+      <p class="muted">Needs <a href="https://docs.astral.sh/uv/getting-started/installation/" rel="noopener">uv</a> and a checkout of this fork (<code>git clone https://github.com/tusharlab2212/OpenOSINT</code>; skills read its absolute path from <code>OPENOSINT_SRC</code>). No API keys for the default flow. <code>uvx openosint</code> and <code>pip install openosint</code> install the upstream release, not this fork.</p>
       <h3>Claude Code plugin</h3>
-      <pre><code>/plugin marketplace add OpenOSINT/OpenOSINT
+      <pre><code>/plugin marketplace add tusharlab2212/OpenOSINT
 /plugin install openosint@openosint
 /openosint:osint example.com</code></pre>
       <h3>Any agent</h3>
-      <pre><code>npx skills add OpenOSINT/OpenOSINT</code></pre>
-      <h3>MCP server and pip</h3>
-      <pre><code>claude mcp add openosint -- uvx --from openosint openosint-mcp
-pip install openosint &amp;&amp; openosint exposure example.com</code></pre>
+      <pre><code>npx skills add tusharlab2212/OpenOSINT</code></pre>
+      <h3>MCP server and CLI</h3>
+      <pre><code>claude mcp add openosint -- uv run --locked --project /absolute/path/to/OpenOSINT openosint-mcp
+cd /absolute/path/to/OpenOSINT &amp;&amp; uv run --locked openosint exposure example.com</code></pre>
       <p>Details: <a href="/docs/agent-skill/">Agent Skill and plugin</a> &middot; <a href="/docs/mcp/">MCP clients</a> &middot; <a href="/docs/cli/">CLI reference</a> &middot; <a href="/docs/web-ui/">Web UI</a> &middot; <a href="/docs/install/">Install</a></p>
     </div>
   </section>

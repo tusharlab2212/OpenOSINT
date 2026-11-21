@@ -27,7 +27,9 @@ def _pyproject_version() -> str:
 
 
 VERSION = _pyproject_version()
-CLI_PREFIX = f"uvx --from openosint=={VERSION} openosint "
+# Skills run this fork from the user's checkout (dependencies from its uv.lock), not the
+# upstream PyPI release; see test_skills_run_this_fork_never_the_pypi_release.
+CLI_PREFIX = 'uv run --locked --project "${OPENOSINT_SRC:?}" openosint '
 
 
 def _load_json(rel: str) -> dict:
@@ -145,18 +147,21 @@ def test_plugin_version_matches_pyproject() -> None:
     )
 
 
-def test_every_uvx_pin_matches_pyproject() -> None:
-    """Skills must pin the release they document, never an unpinned (possibly older) build.
+def test_skills_run_this_fork_never_the_pypi_release() -> None:
+    """Skills run this fork from its local checkout, with dependencies from uv.lock.
 
-    (.mcp.json used to be scanned too; it was removed, see test_mcp_server_is_passive.)
+    `uvx openosint` / `uvx --from openosint…` / `pip install openosint` install the
+    upstream PyPI release, which lacks this fork's changes (e.g. --allow-active-agent),
+    so no skill may invoke them; every CLI line must use the fork-local prefix.
+    (Replaces the earlier check that skills pinned the PyPI release.)
     """
-    files = sorted((ROOT / "skills").rglob("*.md"))
     seen = 0
-    for path in files:
+    for path in sorted((ROOT / "skills").rglob("*.md")):
         text = path.read_text(encoding="utf-8")
-        for pin in re.findall(r"--from[\"',\s]+(openosint\S*?)[\"',\s]", text):
-            seen += 1
-            assert pin == f"openosint=={VERSION}", (
-                f"{path.name}: {pin!r}, expected openosint=={VERSION}"
-            )
-    assert seen >= 3
+        assert "openosint==" not in text, f"{path.relative_to(ROOT)} pins the PyPI release"
+        for block in re.findall(r"```bash\n(.*?)```", text, re.S):
+            for line in filter(None, (ln.strip() for ln in block.splitlines())):
+                if "openosint" in line:
+                    assert line.startswith(CLI_PREFIX), f"{path.name}: {line!r}"
+                    seen += 1
+    assert seen >= 9  # 8 commands in osint, 1 in exposure

@@ -65,7 +65,7 @@ The GDELT news feed was down or returned a bad file. The globe shows a notice; t
 
 ## The MCP server will not start in a desktop app
 
-The app launched with a minimal `PATH` and cannot find `uvx`. Use the absolute path from `which uvx` (macOS, Linux) or `where uvx` (Windows) as the `command`. See [MCP server](/docs/mcp/).
+The app launched with a minimal `PATH` and cannot find `uv`. Use the absolute path from `which uv` (macOS, Linux) or `where uv` (Windows) as the `command`. See [MCP server](/docs/mcp/).
 
 ## A `.env` file is ignored
 

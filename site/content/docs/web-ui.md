@@ -14,7 +14,7 @@ The web UI is a local browser app. It starts without any API key; keyless tools 
 openosint web
 ```
 
-Or without installing: `uvx openosint web`. The server prints its address and opens your browser. By default it listens on `http://127.0.0.1:8080/`.
+Or from a checkout of this fork, without installing: `uv run --locked openosint web` (`uvx openosint web` would run the upstream release). The server prints its address and opens your browser. By default it listens on `http://127.0.0.1:8080/`.
 
 | Option | Effect |
 |---|---|

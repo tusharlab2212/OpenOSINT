@@ -9,7 +9,7 @@
     {
       "name": "openosint",
       "source": "./",
-      "description": "Skills /osint and /exposure plus the OpenOSINT MCP server (passive by default, no API keys needed)."
+      "description": "Skills /osint and /exposure from this OpenOSINT fork, run from a local checkout (passive by default, no API keys needed)."
     }
   ]
 }

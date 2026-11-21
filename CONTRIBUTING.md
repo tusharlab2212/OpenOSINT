@@ -9,8 +9,9 @@ authorized security research and educational use only.
 ## Getting started
 
 ```bash
-# Install in editable mode with dev dependencies
-pip install -e ".[dev]"
+# Install dev dependencies from uv.lock (as CI does); `pip install -e ".[dev]"` also works
+uv sync --locked --extra dev
+source .venv/bin/activate
 
 # Run tests
 pytest
@@ -101,7 +102,7 @@ claude plugin disable <each plugin that prints notices or runs hooks>
 # 2. Demo folder that pre-allows the tools, so no permission prompt appears on screen
 mkdir -p /tmp/openosint-demo/.claude
 cat > /tmp/openosint-demo/.claude/settings.local.json <<'JSON'
-{"permissions": {"allow": ["Bash(uvx --from openosint==2.38.2 openosint *)", "mcp__plugin_openosint_openosint__*"]}}
+{"permissions": {"allow": ["Bash(uv run --locked --project \"${OPENOSINT_SRC:?}\" openosint *)"]}}
 JSON
 
 # 3. Record (one take costs a few API calls). Raw video lands in /tmp/openosint-demo-raw/

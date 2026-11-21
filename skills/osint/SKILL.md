@@ -2,7 +2,7 @@
 name: osint
 description: Passive open-source reconnaissance and external exposure checks for a domain, IP address or organization, using OpenOSINT (DNS, RDAP, WHOIS, email authentication, TLS, security headers, news mentions, search dorks). Use when the user asks to investigate, profile, recon or "look up" a domain, IP or company, or to check what a domain exposes to the internet. No API keys needed for the default flow.
 license: MIT
-compatibility: Needs uv (for `uvx`) and network access. Optional API keys unlock more tools.
+compatibility: Needs uv, a local checkout of this OpenOSINT fork (its absolute path in OPENOSINT_SRC) and network access. Optional API keys unlock more tools.
 argument-hint: "<domain | IP | organization>"
 ---
 
@@ -24,17 +24,17 @@ OpenOSINT runs real tools in Python and returns their real output. You orchestra
 
 ## How to call tools
 
-Use the CLI first: it needs no API key, no AI provider and no MCP server, so it works on any agent. Put `--json` before the subcommand:
+Use the CLI first: it needs no API key, no AI provider and no MCP server, so it works on any agent. Put `--json` before the subcommand. The commands run this fork from the user's local checkout (`OPENOSINT_SRC` is its absolute path), with dependencies installed from its `uv.lock`; if `OPENOSINT_SRC` is not set, stop and ask the user for the path. Do not substitute `uvx openosint` or `pip install openosint`: those install the upstream release from PyPI, not this fork.
 
 ```bash
-uvx --from openosint==2.38.2 openosint --json exposure example.com
-uvx --from openosint==2.38.2 openosint --json dns example.com
-uvx --from openosint==2.38.2 openosint --json rdap example.com
-uvx --from openosint==2.38.2 openosint --json whois example.com
-uvx --from openosint==2.38.2 openosint --json dorks example.com
-uvx --from openosint==2.38.2 openosint --json gdelt "Example Corp"
-uvx --from openosint==2.38.2 openosint --json ip 8.8.8.8
-uvx --from openosint==2.38.2 openosint --json exposure example.com --checks email,registration
+uv run --locked --project "${OPENOSINT_SRC:?}" openosint --json exposure example.com
+uv run --locked --project "${OPENOSINT_SRC:?}" openosint --json dns example.com
+uv run --locked --project "${OPENOSINT_SRC:?}" openosint --json rdap example.com
+uv run --locked --project "${OPENOSINT_SRC:?}" openosint --json whois example.com
+uv run --locked --project "${OPENOSINT_SRC:?}" openosint --json dorks example.com
+uv run --locked --project "${OPENOSINT_SRC:?}" openosint --json gdelt "Example Corp"
+uv run --locked --project "${OPENOSINT_SRC:?}" openosint --json ip 8.8.8.8
+uv run --locked --project "${OPENOSINT_SRC:?}" openosint --json exposure example.com --checks email,registration
 ```
 
 - `--json` output has `tool`, `target`, `timestamp`, `results` and `error`; cite those.

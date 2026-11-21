@@ -2,7 +2,7 @@
 title: "Use OpenOSINT as an MCP server"
 label: "MCP server"
 seo_title: "OpenOSINT MCP server for Claude Desktop and Claude Code"
-description: "Add the openosint-mcp server to Claude Desktop, Claude Code, Cursor or any MCP client with uvx. Config snippets, API keys, and how to enable active tools."
+description: "Run openosint-mcp from a checkout of this fork with uv in Claude Desktop, Claude Code, Cursor or any MCP client. Config, API keys, active tools."
 group: Use
 order: 5
 ---
@@ -10,25 +10,25 @@ The MCP server exposes the OpenOSINT tools to any [Model Context Protocol](https
 
 ## Requirements
 
-Install [uv](https://docs.astral.sh/uv/). `uvx` then fetches and runs OpenOSINT on demand, so there is no separate install step. The command every client runs is the same:
+Install [uv](https://docs.astral.sh/uv/) and clone this fork (`git clone https://github.com/tusharlab2212/OpenOSINT`). Every client then runs the server from that checkout, with dependencies installed from its `uv.lock`:
 
 ```bash
-uvx --from openosint openosint-mcp
+uv run --locked --project /absolute/path/to/OpenOSINT openosint-mcp
 ```
 
-If you installed the package with pip, the executable is `openosint-mcp`.
+This repository is a fork of OpenOSINT. `uvx --from openosint openosint-mcp` and `pip install openosint` install the **upstream** release from PyPI instead, which does not have this fork's changes: it rejects `--allow-active-agent`, for example. If you installed this fork with `pip install -e .`, the executable is `openosint-mcp`.
 
 ## Claude Code
 
 ```bash
-claude mcp add openosint -- uvx --from openosint openosint-mcp
+claude mcp add openosint -- uv run --locked --project /absolute/path/to/OpenOSINT openosint-mcp
 claude mcp list
 ```
 
 Add API keys with `-e` flags before the `--`:
 
 ```bash
-claude mcp add openosint -e SHODAN_API_KEY=your-key -e HIBP_API_KEY=your-key -- uvx --from openosint openosint-mcp
+claude mcp add openosint -e SHODAN_API_KEY=your-key -e HIBP_API_KEY=your-key -- uv run --locked --project /absolute/path/to/OpenOSINT openosint-mcp
 ```
 
 ## Claude Desktop
@@ -39,8 +39,8 @@ Edit `claude_desktop_config.json` and restart the app. On macOS it is at `~/Libr
 {
   "mcpServers": {
     "openosint": {
-      "command": "uvx",
-      "args": ["--from", "openosint", "openosint-mcp"],
+      "command": "uv",
+      "args": ["run", "--locked", "--project", "/absolute/path/to/OpenOSINT", "openosint-mcp"],
       "env": {
         "SHODAN_API_KEY": "your-key"
       }
@@ -53,7 +53,7 @@ Edit `claude_desktop_config.json` and restart the app. On macOS it is at `~/Libr
 
 Any client that can launch a stdio MCP server takes the same command and arguments. For Cursor, put the JSON above in `~/.cursor/mcp.json` (all projects) or `.cursor/mcp.json` (one project).
 
-Desktop apps often start with a minimal `PATH` that does not include `uvx`. If the server fails to start, replace `"uvx"` with the absolute path printed by `which uvx` (macOS, Linux) or `where uvx` (Windows).
+Desktop apps often start with a minimal `PATH` that does not include `uv`. If the server fails to start, replace `"uv"` with the absolute path printed by `which uv` (macOS, Linux) or `where uv` (Windows).
 
 ## API keys
 
@@ -80,11 +80,7 @@ The server does not cap how many tools your client calls. Only `investigate_mult
 
 ## Pin a version
 
-```bash
-uvx --from openosint==%%VERSION%% openosint-mcp
-```
-
-From a source checkout, use `"command": "python", "args": ["-m", "openosint.mcp_server"]`.
+Pin the checkout itself: `git checkout <commit>` in your clone runs exactly that commit of this fork, and `--locked` keeps its dependencies at the versions in its `uv.lock`. A PyPI version pin (`uvx --from openosint==%%VERSION%% …`) selects an upstream release, not this fork.
 
 ## Example prompt
 

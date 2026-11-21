@@ -16,23 +16,28 @@
 
 <img src="https://raw.githubusercontent.com/OpenOSINT/OpenOSINT/main/docs/assets/demo-chat.gif" width="720" alt="OpenOSINT answering a question about a company in chat: tool calls with their times, then an answer with a source on every claim">
 
-**Run it yourself:** `uvx openosint web` (one command, no keys)<br>
+**Run it yourself:** from a checkout of this fork, `uv run --locked openosint web` (no keys)<br>
 **No terminal?** Use [OpenOSINT Cloud](https://app.openosint.tech/?utm_source=github&utm_medium=readme&utm_campaign=hero) in your browser, first check free
 
 [Docs](https://openosint.tech/docs/) · [Claude Code plugin](#use-it-from-claude-code-or-any-mcp-client) · [MCP server](https://openosint.tech/docs/mcp/)
 
 </div>
 
+> **This repository is a security-hardened fork of [OpenOSINT](https://github.com/OpenOSINT/OpenOSINT).** Run it from a checkout of this fork, as below. `uvx openosint`, `uvx --from openosint …`, `pip install openosint`, the `OpenOSINT/OpenOSINT` Claude Code marketplace and `npx skills add OpenOSINT/OpenOSINT` all install the **upstream** release (PyPI or the upstream repository), which does not contain this fork's changes, for example the `--allow-active-agent` option. Version numbers alone do not tell them apart: both report the same version.
+
 ## Quickstart
 
-Needs [`uv`](https://docs.astral.sh/uv/). No API keys for these commands.
+Needs [`uv`](https://docs.astral.sh/uv/) and `git`. No API keys for these commands. `uv run --locked` installs the exact dependency versions recorded in this fork's `uv.lock`.
 
 ```bash
+git clone https://github.com/tusharlab2212/OpenOSINT
+cd OpenOSINT
+
 # Local web app with chat, graph and globe
-uvx openosint web
+uv run --locked openosint web
 
 # Or one direct check, no AI involved
-uvx openosint exposure example.com
+uv run --locked openosint exposure example.com
 ```
 
 ```text
@@ -89,16 +94,19 @@ Agents and MCP clients are only offered tools that query third-party sources or 
 
 ## Use it from Claude Code or any MCP client
 
+The skills and the MCP server below run this fork from your checkout. Set `OPENOSINT_SRC` to its absolute path (the skills read it), and use that path in the MCP command.
+
 ```text
-/plugin marketplace add OpenOSINT/OpenOSINT
+/plugin marketplace add tusharlab2212/OpenOSINT
 /plugin install openosint@openosint
 /openosint:osint example.com
 ```
 
 ```bash
-claude mcp add openosint -- uvx --from openosint openosint-mcp
+export OPENOSINT_SRC=/absolute/path/to/OpenOSINT
+claude mcp add openosint -- uv run --locked --project /absolute/path/to/OpenOSINT openosint-mcp
 # Codex, Gemini CLI, Cursor and other Agent Skills clients
-npx skills add OpenOSINT/OpenOSINT
+npx skills add tusharlab2212/OpenOSINT
 ```
 
 ![OpenOSINT in Claude Code: add the marketplace, install the plugin, run /openosint:osint example.com and get a report where every finding cites its tool call](https://raw.githubusercontent.com/OpenOSINT/OpenOSINT/main/assets/demo/skill-demo.gif)
@@ -109,7 +117,7 @@ Other clients: [MCP docs](https://openosint.tech/docs/mcp/) · [Agent Skill](htt
 
 - **Web UI:** `openosint web`, streaming chat, a news globe and a graph view. [Docs](https://openosint.tech/docs/web-ui/)
 - **REPL:** `openosint` with no arguments. [CLI reference](https://openosint.tech/docs/cli/)
-- **MCP server:** `uvx --from openosint openosint-mcp`. [Client configs](https://openosint.tech/docs/mcp/)
+- **MCP server:** `uv run --locked --project /absolute/path/to/OpenOSINT openosint-mcp`. [Client configs](https://openosint.tech/docs/mcp/)
 
 ### Web UI + globe
 
@@ -125,7 +133,7 @@ A FollowTheMoney graph with statement-level provenance and a review queue for `s
 
 ### Installation
 
-`pip install openosint` or `uvx openosint web`. Python 3.10+. [Install guide](https://openosint.tech/docs/install/)
+Clone this fork and use `uv run --locked openosint …` (dependencies from `uv.lock`), or `pip install -e .` in the checkout. Python 3.10+. `pip install openosint` and `uvx openosint` install the upstream release instead. [Install guide](https://openosint.tech/docs/install/)
 
 ### MCP Server
 

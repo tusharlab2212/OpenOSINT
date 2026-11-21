@@ -184,7 +184,7 @@
 <h2 id="service_unavailable-search_gdelt_geo"><code>[service_unavailable] search_gdelt_geo</code></h2>
 <p>The GDELT news feed was down or returned a bad file. The globe shows a notice; try again later.</p>
 <h2 id="the-mcp-server-will-not-start-in-a-desktop-app">The MCP server will not start in a desktop app</h2>
-<p>The app launched with a minimal <code>PATH</code> and cannot find <code>uvx</code>. Use the absolute path from <code>which uvx</code> (macOS, Linux) or <code>where uvx</code> (Windows) as the <code>command</code>. See <a href="/docs/mcp/">MCP server</a>.</p>
+<p>The app launched with a minimal <code>PATH</code> and cannot find <code>uv</code>. Use the absolute path from <code>which uv</code> (macOS, Linux) or <code>where uv</code> (Windows) as the <code>command</code>. See <a href="/docs/mcp/">MCP server</a>.</p>
 <h2 id="a-env-file-is-ignored">A <code>.env</code> file is ignored</h2>
 <p>OpenOSINT does not read a <code>.env</code> from the directory you run it from or any parent directory; startup prints <code>[!] Not loading &lt;path&gt;</code> when it finds one there. Set <code>OPENOSINT_ENV_FILE=/absolute/path/to/.env</code>, or run <code>openosint config import</code> in that directory to copy its keys into <code>config.env</code>. For the MCP server, put <code>OPENOSINT_ENV_FILE</code> (or the keys themselves) in the client's <code>env</code> block.</p>
 <p>If the file loads but one variable is missing, look for <code>[!] Ignored in &lt;file&gt;: …</code> at startup: that variable can only be set as a real environment variable or command-line flag. See <a href="/docs/configuration/#what-a-file-may-not-set">What a file may not set</a>.</p>

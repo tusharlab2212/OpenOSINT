@@ -150,21 +150,21 @@
         </ol>
       </nav>
       <h1>Agent Skill and Claude Code plugin</h1>
-      <p>OpenOSINT ships as an <a href="https://agentskills.io/">Agent Skill</a> and as a Claude Code plugin. An agent that has it can investigate a domain, IP address or organization with real, passive tools, and must cite the tool call behind every finding. It needs <a href="https://docs.astral.sh/uv/getting-started/installation/"><code>uv</code></a> and network access. It needs no API key and no OpenOSINT AI provider: your agent is the model.</p>
+      <p>OpenOSINT ships as an <a href="https://agentskills.io/">Agent Skill</a> and as a Claude Code plugin. An agent that has it can investigate a domain, IP address or organization with real, passive tools, and must cite the tool call behind every finding. It needs <a href="https://docs.astral.sh/uv/getting-started/installation/"><code>uv</code></a>, a local checkout of this fork whose absolute path is in <code>OPENOSINT_SRC</code>, and network access. It needs no API key and no OpenOSINT AI provider: your agent is the model.</p>
 <h2 id="install">Install</h2>
 <h3 id="claude-code-plugin">Claude Code (plugin)</h3>
-<p>The plugin bundles both skills and a passive <a href="/docs/mcp/">MCP server</a>, pinned to release 2.38.2.</p>
-<pre><code class="language-text">/plugin marketplace add OpenOSINT/OpenOSINT
+<p>The plugin bundles both skills. Add the <a href="/docs/mcp/">MCP server</a> separately if you want it.</p>
+<pre><code class="language-text">/plugin marketplace add tusharlab2212/OpenOSINT
 /plugin install openosint@openosint
 /openosint:osint example.com
 </code></pre>
 <h3 id="any-agent-that-supports-agent-skills">Any agent that supports Agent Skills</h3>
 <p>Codex, Gemini CLI, Cursor and other Agent Skills clients can install the skills only (no MCP server):</p>
-<pre><code class="language-bash">npx skills add OpenOSINT/OpenOSINT
+<pre><code class="language-bash">npx skills add tusharlab2212/OpenOSINT
 </code></pre>
 <p>Then ask your agent in plain words, or invoke the skill by name, for example <code>/osint example.com</code> in Claude Code. See <a href="#osint-or-openosintosint-does-nothing">the namespacing note</a> below.</p>
 <h3 id="by-hand">By hand</h3>
-<p>Copy <code>skills/osint/</code> and <code>skills/exposure/</code> from the <a href="https://github.com/OpenOSINT/OpenOSINT/tree/main/skills">repository</a> into the skills folder your agent reads (for Claude Code, <code>~/.claude/skills/</code> or <code>.claude/skills/</code> in a project).</p>
+<p>Copy <code>skills/osint/</code> and <code>skills/exposure/</code> from the <a href="https://github.com/tusharlab2212/OpenOSINT/tree/main/skills">repository</a> into the skills folder your agent reads (for Claude Code, <code>~/.claude/skills/</code> or <code>.claude/skills/</code> in a project).</p>
 <h2 id="what-the-skills-do">What the skills do</h2>
 <div class="table-wrap" tabindex="0" role="region" aria-label="Table"><table>
 <thead>
@@ -187,7 +187,7 @@
 </tr>
 </tbody>
 </table></div>
-<p>Both call the <a href="/docs/cli/">CLI</a> with <code>--json</code> through <code>uvx --from openosint==2.38.2 openosint ...</code>, so they work on any agent without an MCP server. When the <code>openosint</code> MCP server is already connected, the <code>osint</code> skill uses its tools instead; they return the same data.</p>
+<p>Both call the <a href="/docs/cli/">CLI</a> with <code>--json</code> through <code>uv run --locked --project "${OPENOSINT_SRC:?}" openosint ...</code>, so they run this fork's code with the dependencies in its <code>uv.lock</code>, on any agent without an MCP server. They never use <code>uvx openosint</code>, which installs the upstream PyPI release. When the <code>openosint</code> MCP server is already connected, the <code>osint</code> skill uses its tools instead; they return the same data.</p>
 <p>The report has four parts: target and scope, findings (each with its citation), what was not checked or needs a key, and leads to verify.</p>
 <h2 id="the-passive-rules">The passive rules</h2>
 <p>The skills hold the agent to these rules:</p>
@@ -200,12 +200,12 @@
 </ol>
 <p>One thing still contacts the target: the <code>exposure</code> TLS and header checks make a connection on port 443. For zero contact, ask for <code>exposure DOMAIN --checks email,registration</code> (DNS and registry only, not graded). More in <a href="/docs/safety/">Safety</a>.</p>
 <h2 id="troubleshooting">Troubleshooting</h2>
-<h3 id="uvx-is-not-found"><code>uvx</code> is not found</h3>
-<p>Install uv (<code>curl -LsSf https://astral.sh/uv/install.sh | sh</code> on macOS and Linux), then open a new terminal so it is on your <code>PATH</code>. Desktop apps often start with a minimal <code>PATH</code>: for the plugin's MCP server, or any MCP client, use the absolute path from <code>which uvx</code> (macOS, Linux) or <code>where uvx</code> (Windows) as the command.</p>
+<h3 id="uv-is-not-found-or-openosint_src-is-not-set"><code>uv</code> is not found, or <code>OPENOSINT_SRC</code> is not set</h3>
+<p>Install uv (see the <a href="https://docs.astral.sh/uv/getting-started/installation/">uv installation guide</a>), then open a new terminal so it is on your <code>PATH</code>. Set <code>OPENOSINT_SRC</code> to the absolute path of your checkout of this fork; the skill commands stop with an error if it is unset. Desktop apps often start with a minimal <code>PATH</code>: for an MCP client, use the absolute path from <code>which uv</code> (macOS, Linux) or <code>where uv</code> (Windows) as the command.</p>
 <h3 id="osint-or-openosintosint-does-nothing"><code>/osint</code> or <code>/openosint:osint</code> does nothing</h3>
 <p>Skills installed by the Claude Code plugin are namespaced by the plugin name, so they are <code>/openosint:osint</code> and <code>/openosint:exposure</code>. Skills installed on their own (<code>npx skills add</code>, or copied by hand) are not namespaced, so the same skill is <code>/osint</code>. If a command is not found, type <code>/</code> and look at the list to see which form you have.</p>
 <h3 id="the-first-run-is-slow-or-fails-offline">The first run is slow, or fails offline</h3>
-<p><code>uvx</code> downloads the pinned OpenOSINT release the first time and caches it. That needs network access; later runs start from the cache.</p>
+<p><code>uv run --locked</code> installs the dependencies recorded in the checkout's <code>uv.lock</code> the first time and caches them. That needs network access; later runs start from the cache.</p>
 <h3 id="a-tool-says-a-key-is-missing">A tool says a key is missing</h3>
 <p>That is expected for the keyed tools (Shodan, Censys, VirusTotal, AbuseIPDB, HaveIBeenPwned). The default flow does not use them. See <a href="/docs/configuration/">Configuration</a> for the variable names, or <a href="/docs/troubleshooting/">Troubleshooting</a>.</p>
 <h3 id="i-want-the-noisy-tools">I want the noisy tools</h3>
